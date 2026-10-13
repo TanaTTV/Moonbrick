@@ -1,6 +1,8 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -112,16 +114,31 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(managed.read_bytes(), (ROOT / "luau/lib/server/PlayerData.luau").read_bytes())
         self.assertTrue(any(p.read_text() == "local edits" for p in (self.root / ".moonbrick/backups").rglob("PlayerData.luau")))
 
+    def link_dir(self, link: Path, target: Path):
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            # Windows without symlink privilege: a junction is the same escape and needs no privilege.
+            if os.name != "nt" or subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True).returncode:
+                self.skipTest("symlink/junction creation unavailable")
+
     def test_symlink_cannot_escape_project(self):
         outside = Path(self.tmp.name) / "outside"
         outside.mkdir()
-        link = self.root / "src/kit/escape"
-        try:
-            link.symlink_to(outside, target_is_directory=True)
-        except OSError:
-            self.skipTest("symlink privilege unavailable")
-        with self.assertRaisesRegex(ValueError, "symlink"):
-            project.sync(self.root)
+        for rel in ("src/kit/escape", "tools/escape", "tests/escape"):
+            link = self.root / rel
+            self.link_dir(link, outside)
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                project.sync(self.root)
+            os.rmdir(link) if os.name == "nt" else link.unlink()
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_links_outside_managed_paths_do_not_block_sync(self):
+        outside = Path(self.tmp.name) / "store"
+        outside.mkdir()
+        (self.root / "node_modules").mkdir()
+        self.link_dir(self.root / "node_modules/pkg", outside)
+        project.sync(self.root)
         self.assertEqual(list(outside.iterdir()), [])
 
     def test_upgrade_migrates_safety_and_ignores_without_touching_game_settings(self):

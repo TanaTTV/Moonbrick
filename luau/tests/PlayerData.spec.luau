@@ -247,6 +247,118 @@ return function(t: any)
 		t.eq(b.data.Coins, 5)
 	end)
 
+	local function migrating(store, migrate)
+		return Session.new(store, "Player_1", template, { jobId = "A", retries = 3, retryDelay = 0, migrate = migrate })
+	end
+
+	t.test("invalid saved data is refused once, untouched, when no recovery is configured", function()
+		local store = PlayerData.memoryStore()
+		local calls, original = 0, store.UpdateAsync
+		function store.UpdateAsync(self, key, fn)
+			calls += 1
+			return original(self, key, fn)
+		end
+		store.values.Player_1 = { data = { Coins = 5, Inventory = { [1] = "Sword", [3] = "Shield" } } }
+		local ok, err = migrating(store, nil):load()
+		t.eq(ok, false)
+		t.ok(string.find(err, "onInvalidData", 1, true), err)
+		t.eq(calls, 1, "a permanent problem is not retried")
+		t.eq(store.values.Player_1.data.Inventory[3], "Shield", "original kept")
+		t.eq(store.values.Player_1.lock, nil, "no lock left behind")
+		t.eq(store.values.Player_1.backups, nil)
+	end)
+
+	t.test("onInvalidData recovers invalid saved data and backs up the original", function()
+		local store = PlayerData.memoryStore()
+		store.values.Player_1 = { data = { Coins = 5, Inventory = { [1] = "Sword", [3] = "Shield" } }, Other = "kept" }
+		local seen
+		local a = migrating(store, function(data, reason)
+			seen = reason
+			return PlayerData.sanitize(data)
+		end)
+		t.ok(a:load())
+		t.ok(string.find(seen, "sparse", 1, true), seen)
+		t.eq(a.data.Coins, 5)
+		t.eq(#a.data.Inventory, 2)
+		t.eq(a.data.Inventory[2], "Shield")
+		t.eq(a.data.Settings.Music, true, "template reconciled")
+		local record = store.values.Player_1
+		t.eq(record.Other, "kept")
+		t.eq(#record.backups, 1)
+		t.eq(record.backups[1].data.Inventory[3], "Shield", "original preserved in backup")
+		t.ok(string.find(record.backups[1].reason, "sparse", 1, true))
+		t.ok(a:save(true))
+		t.eq(#store.values.Player_1.backups, 1, "saves keep backups")
+		t.ok(migrating(store, nil):load(), "recovered data loads without a callback")
+	end)
+
+	t.test("onInvalidData that declines, errors, yields or returns invalid data leaves the record untouched", function()
+		local cases: { () -> any } = {
+			function()
+				return nil
+			end,
+			function()
+				error("boom")
+			end,
+			function()
+				task.wait()
+				return {}
+			end,
+			function()
+				return { Coins = 0 / 0 }
+			end,
+			function()
+				return "nope" :: any
+			end,
+		}
+		for i, migrate in cases do
+			local store = PlayerData.memoryStore()
+			store.values.Player_1 = { data = { Coins = math.huge } }
+			local ok, err = migrating(store, migrate):load()
+			t.eq(ok, false, `case {i}`)
+			t.ok(type(err) == "string", `case {i}`)
+			t.eq(store.values.Player_1.data.Coins, math.huge, `case {i}: original kept`)
+			t.eq(store.values.Player_1.lock, nil, `case {i}`)
+			t.eq(store.values.Player_1.backups, nil, `case {i}`)
+		end
+	end)
+
+	t.test("non-table saved data can be recovered, and a full backup list refuses instead of discarding", function()
+		local store = PlayerData.memoryStore()
+		store.values.Player_1 = { data = "corrupt" }
+		local a = migrating(store, function()
+			return { Coins = 1 }
+		end)
+		t.ok(a:load())
+		t.eq(store.values.Player_1.backups[1].data, "corrupt")
+		t.ok(a:save(true))
+		local full = { data = { Coins = 0 / 0 }, backups = { {}, {}, {} } }
+		store.values.Player_1 = full
+		local ok, err = migrating(store, PlayerData.sanitize):load()
+		t.eq(ok, false)
+		t.ok(string.find(err, "manually", 1, true), err)
+		t.eq(#store.values.Player_1.backups, 3)
+	end)
+
+	t.test("sanitize returns valid data and keeps everything it can", function()
+		local mixed: any = { "drop" }
+		mixed.Keep = 1
+		local clean = PlayerData.sanitize({
+			Coins = 0 / 0,
+			Name = "ok",
+			List = { [2] = "b", [5] = "c" },
+			Mixed = mixed,
+			Fn = function() end,
+		})
+		PlayerData.validate(clean)
+		t.eq(clean.Coins, nil)
+		t.eq(clean.Name, "ok")
+		t.eq(clean.List[1], "b")
+		t.eq(clean.List[2], "c")
+		t.eq(clean.Mixed.Keep, 1)
+		t.eq(clean.Fn, nil)
+	end)
+
 	t.test("cycles, sparse arrays, mixed keys and Instances cannot silently lose data", function()
 		local cycle = {}
 		cycle.self = cycle

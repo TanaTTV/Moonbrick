@@ -41,14 +41,20 @@ def is_link(path: Path) -> bool:
     return path.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & 0x400)
 
 
+# Everything sync/import reads, copies or writes. Links elsewhere (node_modules, tool caches) are never touched.
+MANAGED = ("src", "tools", "tests", ".moonbrick", "default.project.json", ".gitignore", "sourcemap.json")
+
+
 def safe_root(project: Path) -> Path:
     # Resolve only AFTER rejecting symlink roots; never follow project-managed links.
     if is_link(project):
         raise ValueError("project root must not be a symlink")
     project = project.resolve(strict=True)
-    for path in project.rglob("*"):
-        if is_link(path):
-            raise ValueError(f"project contains a symlink/junction: {path.relative_to(project)}")
+    for name in MANAGED:
+        top = project / name
+        for path in (top, *(top.rglob("*") if top.is_dir() and not is_link(top) else ())):
+            if is_link(path):
+                raise ValueError(f"project contains a symlink/junction: {path.relative_to(project)}")
     if not (project / "default.project.json").is_file():
         raise ValueError("not a Moonbrick/Rojo project (missing default.project.json)")
     return project

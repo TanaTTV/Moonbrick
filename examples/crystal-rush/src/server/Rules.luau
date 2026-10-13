@@ -24,4 +24,16 @@ function Rules.canCollect(
 	end
 	return true, "Collected"
 end
+
+-- Characters are simulated by their client, so the server checks travel between its own samples.
+-- `distance` is horizontal (falling is fine); jitter allows for bursty replication and latency.
+Rules.SPEED_TOLERANCE = 1.5
+Rules.JITTER = 4
+function Rules.plausibleMove(distance: number, elapsed: number, walkSpeed: number): boolean
+	if distance ~= distance or elapsed ~= elapsed or walkSpeed ~= walkSpeed then
+		return false
+	end
+	local window = math.clamp(elapsed, 0, 2)
+	return distance <= math.max(walkSpeed, 0) * Rules.SPEED_TOLERANCE * window + Rules.JITTER
+end
 return Rules

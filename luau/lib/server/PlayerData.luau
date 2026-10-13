@@ -30,7 +30,13 @@ export type Config = {
 	studioStore: ("memory" | "live")?, -- default memory; never point Studio at production stores
 	onLoadFailed: ((Player, string) -> ())?, -- default: kick with a friendly message
 	onSessionLost: ((Player, string) -> ())?, -- default: kick rather than allow unsaved play
+	-- Saved data that fails validation is never loaded or overwritten by default (the player gets
+	-- onLoadFailed). To recover, return replacement data from a copy, e.g. `onInvalidData = PlayerData.sanitize`.
+	-- Must not yield. Return nil to keep refusing. The original is kept in the record's `backups` list.
+	onInvalidData: ((data: any, reason: string) -> { [string]: any }?)?,
 }
+
+export type Migrate = (data: any, reason: string) -> { [string]: any }?
 
 local JOB_ID = if game.JobId ~= "" then game.JobId else "studio-" .. HttpService:GenerateGUID(false)
 local LOCK_TIMEOUT = 600 -- a lock not refreshed for this long belongs to a dead server
@@ -104,6 +110,51 @@ local function reconcile(data: { [any]: any }, template: { [any]: any }): { [any
 end
 PlayerData.reconcile = reconcile
 
+-- Opt-in recovery for `onInvalidData`: a valid copy that drops non-finite numbers, invalid strings and
+-- unsupported values (template defaults refill dropped keys), compacts sparse arrays in index order and
+-- drops the numeric keys of mixed tables. The original record is always backed up before it is replaced.
+local function sanitize(value: any, depth: number): any
+	local kind = type(value)
+	if kind == "number" then
+		return if value == value and math.abs(value) < math.huge then value else nil
+	elseif kind == "string" then
+		return if utf8.len(value) ~= nil then value else nil
+	elseif kind == "boolean" then
+		return value
+	elseif kind ~= "table" or depth >= 63 then
+		return nil
+	end
+	local strings, indices = {}, {}
+	for key in value do
+		if type(key) == "string" and utf8.len(key) ~= nil then
+			table.insert(strings, key)
+		elseif type(key) == "number" and key >= 1 and key < math.huge and key % 1 == 0 then
+			table.insert(indices, key)
+		end
+	end
+	local result: { [any]: any } = {}
+	if #strings > 0 then
+		for _, key in strings do
+			result[key] = sanitize(value[key], depth + 1)
+		end
+	else
+		table.sort(indices)
+		for _, index in indices do
+			local item = sanitize(value[index], depth + 1)
+			if item ~= nil then
+				table.insert(result, item)
+			end
+		end
+	end
+	return result
+end
+function PlayerData.sanitize(data: any, _reason: string?): { [string]: any }?
+	local clean = sanitize(data, 0)
+	return if type(clean) == "table" then clean else nil
+end
+
+local MAX_BACKUPS = 3 -- recoveries kept in the record; beyond this, loading refuses instead of discarding one
+
 -- In-memory store with DataStore-like copy semantics. Used for tests and Studio without API access.
 function PlayerData.memoryStore(): Store & { values: { [string]: any } }
 	local store = { values = {} }
@@ -137,17 +188,15 @@ export type Session = typeof(setmetatable(
 		token: string,
 		busy: boolean,
 		closing: boolean,
+		migrate: Migrate?,
 	},
 	Session
 ))
 
-function Session.new(
-	store: Store,
-	key: string,
-	template: { [string]: any },
-	opts: { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean? }?
-): Session
-	local o: { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean? } = opts or {}
+type SessionOptions = { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean?, migrate: Migrate? }
+
+function Session.new(store: Store, key: string, template: { [string]: any }, opts: SessionOptions?): Session
+	local o: SessionOptions = opts or {}
 	validate(template)
 	assert(o.retries == nil or (o.retries >= 1 and o.retries <= 10 and o.retries % 1 == 0), "retries must be 1..10")
 	assert(o.retryDelay == nil or (o.retryDelay >= 0 and o.retryDelay <= 10), "retryDelay must be 0..10")
@@ -165,7 +214,44 @@ function Session.new(
 		token = HttpService:GenerateGUID(false),
 		busy = false,
 		closing = false,
+		migrate = o.migrate,
 	}, Session)
+end
+
+local function check(value: any): string?
+	local ok, err = pcall(function()
+		validate(value)
+		return true
+	end)
+	return if ok then nil else tostring(err)
+end
+
+-- Run the game's recovery callback on a copy. Returns replacement data, or nil + why loading must refuse.
+local function migrateData(self: Session, raw: any, reason: string): ({ [string]: any }?, string?)
+	if not self.migrate then
+		return nil, `saved data is invalid ({reason}); not loaded or overwritten. Set onInvalidData to recover`
+	end
+	local thread = coroutine.create(self.migrate)
+	local ok, result = coroutine.resume(thread, deepCopy(raw), reason)
+	if coroutine.status(thread) ~= "dead" then
+		coroutine.close(thread)
+		return nil, "onInvalidData must not yield; saved data left unchanged"
+	end
+	if not ok then
+		return nil, `onInvalidData failed ({result}); saved data left unchanged`
+	end
+	if result == nil then
+		return nil, `saved data is invalid ({reason}); onInvalidData declined to recover it`
+	end
+	if type(result) ~= "table" then
+		return nil, "onInvalidData must return a table or nil; saved data left unchanged"
+	end
+	local migrated = reconcile(result, self.template)
+	local problem = check(migrated)
+	if problem then
+		return nil, `onInvalidData returned invalid data ({problem}); saved data left unchanged`
+	end
+	return migrated
 end
 
 local function lockFor(self: Session)
@@ -193,25 +279,46 @@ function Session.load(self: Session): (boolean, string?)
 	end
 	local lastError = "unknown error"
 	for attempt = 1, self.retries do
-		local result, lockedBy = nil, nil
+		local result, lockedBy, refused: string? = nil, nil, nil
 		local ok, err = pcall(function()
 			local committed = self.store:UpdateAsync(self.key, function(stored, info)
-				result, lockedBy = nil, nil
+				result, lockedBy, refused = nil, nil, nil
 				if stored == nil then
 					stored = {}
 				end
 				assert(type(stored) == "table", "invalid stored record; refusing to replace it")
-				assert(
-					stored.data == nil or type(stored.data) == "table",
-					"invalid stored data; refusing to replace it"
-				)
 				local lock = stored.lock
 				if lock and not owns(self, lock) and os.time() - (lock.time or 0) < LOCK_TIMEOUT then
 					lockedBy = lock.job
 					return nil -- don't write; another live server owns this data
 				end
-				stored.data = reconcile(stored.data or deepCopy(self.template), self.template)
-				validate(stored.data)
+				local raw = stored.data
+				local data: { [string]: any }?, problem: string? = nil, nil
+				if raw == nil then
+					data = deepCopy(self.template)
+				elseif type(raw) ~= "table" then
+					problem = `saved data is a {type(raw)}, not a table`
+				else
+					data = reconcile(deepCopy(raw), self.template)
+					problem = check(data)
+				end
+				if problem then
+					-- Never drop the original: it goes into a bounded backup list before replacement.
+					local backups = stored.backups
+					if backups ~= nil and (type(backups) ~= "table" or #backups >= MAX_BACKUPS) then
+						refused =
+							`saved data is invalid ({problem}) and the record already holds {MAX_BACKUPS} recovery backups; inspect it manually`
+						return nil
+					end
+					data, refused = migrateData(self, raw, problem :: string)
+					if not data then
+						return nil -- don't write; the record stays exactly as it was
+					end
+					backups = backups or {}
+					table.insert(backups, { data = raw, reason = problem, time = os.time(), job = self.jobId })
+					stored.backups = backups
+				end
+				stored.data = data
 				stored.lock = lockFor(self)
 				if info then
 					return stored, info:GetUserIds(), info:GetMetadata()
@@ -224,6 +331,10 @@ function Session.load(self: Session): (boolean, string?)
 			self.data, self.loaded = result, true
 			self.busy = false
 			return true
+		end
+		if ok and refused then
+			self.busy = false
+			return false, refused -- invalid saved data is permanent; retrying cannot help
 		end
 		lastError = if not ok then tostring(err) else `locked by another server ({lockedBy})`
 		if attempt < self.retries then
@@ -384,7 +495,8 @@ local function onJoin(player: Player)
 		return
 	end
 	local cfg = config :: Config
-	local session = Session.new(store :: Store, "Player_" .. player.UserId, cfg.template)
+	local session =
+		Session.new(store :: Store, "Player_" .. player.UserId, cfg.template, { migrate = cfg.onInvalidData })
 	sessions[player] = session
 	local ok, err = session:load()
 	if closing or player.Parent ~= Players then -- left or shutdown began while loading

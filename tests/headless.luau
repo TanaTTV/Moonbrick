@@ -184,6 +184,33 @@ task.spawn(function()
 		t.eq(store.values.Player_1.data.Coins, 4, "last good save kept")
 		close()
 	end)
+	t.test("invalid saved data: default refuses without writing; onInvalidData recovers through the Player API", function()
+		local players, player, close = environment()
+		local data = loadPlayerData()
+		local store = data.memoryStore()
+		store.values.Player_1 = { data = { Coins = 0 / 0, Gems = 3 } }
+		local reason
+		data.start({ template = { Coins = 0, Gems = 0 }, store = store, onLoadFailed = function(_, why) reason = why end })
+		players.PlayerAdded:Fire(player)
+		t.ok(reason and reason:find("onInvalidData", 1, true), tostring(reason))
+		t.eq(data.wait(player, 1), nil)
+		t.ok(store.values.Player_1.data.Coins ~= store.values.Player_1.data.Coins, "original NaN untouched")
+		t.eq(store.values.Player_1.lock, nil)
+		close()
+
+		players, player, close = environment()
+		data = loadPlayerData()
+		data.start({ template = { Coins = 0, Gems = 0 }, store = store, onInvalidData = data.sanitize })
+		players.PlayerAdded:Fire(player)
+		t.eq(data.get(player).Coins, 0, "dropped value refilled from template")
+		t.eq(data.get(player).Gems, 3)
+		t.eq(#store.values.Player_1.backups, 1)
+		player.Parent = nil
+		players.PlayerRemoving:Fire(player)
+		t.eq(store.values.Player_1.lock, nil)
+		t.eq(store.values.Player_1.data.Gems, 3)
+		close()
+	end)
 end)
 for _ = 1, 10000 do
 	if #queue == 0 then break end

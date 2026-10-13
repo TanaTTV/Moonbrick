@@ -30,10 +30,14 @@ jobs:
       - name: Host regression tests
         run: python -m unittest discover -s tests -v
       - name: Install verified development tools
+        env:
+          # Unauthenticated GitHub API calls hit the shared runner rate limit (403) and fail the install.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python scripts/fetch-luau.py
           python scripts/fetch-rokit.py
           export PATH="$HOME/.rokit/bin:$PATH"
+          rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify
           cd template
           rokit install --no-trust-check
       - name: Headless persistence regressions

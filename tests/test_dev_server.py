@@ -1,7 +1,9 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from unittest.mock import Mock
@@ -50,6 +52,34 @@ class DevServerTests(unittest.TestCase):
             with patch.object(server, "probe", side_effect=[OSError("absent"), {"projectName": "same", "sessionId": "foreign"}]), patch.object(server.socket, "socket", return_value=connection), patch.object(server.shutil, "which", return_value="rojo"), patch.object(server.subprocess, "Popen", return_value=child), patch.object(server, "listener_owned", return_value=False), self.assertRaisesRegex(ValueError, "another process"):
                 server.ensure(root)
             self.assertFalse((root / ".moonbrick/serve.json").exists())
+
+    def test_startup_lock_recovers_from_a_killed_launch_but_respects_a_live_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "serve.lock"
+            lock.write_text("")
+            self.assertFalse(server.take_lock(lock), "fresh lock: another startup is running")
+            old = time.time() - server.STALE_LOCK - 5
+            os.utime(lock, (old, old))
+            self.assertTrue(server.take_lock(lock), "stale lock from a killed process is reclaimed")
+            self.assertTrue(lock.exists())
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["serve.lock"])
+            lock.unlink()
+            self.assertTrue(server.take_lock(lock))
+
+    def test_live_startup_lock_reports_progress_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "default.project.json").write_text(json.dumps({"name": "game"}))
+            (root / ".moonbrick").mkdir()
+            (root / ".moonbrick/serve.lock").write_text("")
+            connection = Mock()
+            connection.__enter__ = Mock(return_value=connection)
+            connection.__exit__ = Mock(return_value=False)
+            connection.connect_ex.return_value = 1
+            with patch.object(server, "probe", side_effect=OSError("absent")), patch.object(server.socket, "socket", return_value=connection), patch.object(server.shutil, "which", return_value="rojo"), patch.object(server.subprocess, "Popen") as launch:
+                self.assertIsNone(server.ensure(root))
+                launch.assert_not_called()
+            self.assertTrue((root / ".moonbrick/serve.lock").exists(), "another starter's lock is left alone")
 
     def test_native_listener_pid_parsing_refuses_ambiguous_owners(self):
         result = Mock(stdout="TCP 127.0.0.1:4999 0.0.0.0:0 LISTENING 42\nTCP 127.0.0.1:5000 0.0.0.0:0 LISTENING 43\n")

@@ -10,7 +10,7 @@ Acceptance in a dedicated place:
 
 1. `K.test()` passes; round moves Waiting → Intermission → Playing → Results.
 2. `K.hook("CrystalRush", "state")` reports the actual server state; `skip` advances the deadline.
-3. Real ProximityPrompt input awards exactly one coin, hides one crystal and updates HUD; duplicate and distant `CrystalCollect` requests award nothing.
+3. Real ProximityPrompt input awards exactly one coin, hides one crystal and updates HUD; duplicate and distant `CrystalCollect` requests award nothing. Teleporting the character next to a crystal is pulled back by the server movement check and awards nothing.
 4. Two players see the same countdown; each sees their own score/coins. Leave/respawn works without stale UI or data access.
 5. Touch and gamepad can collect and read the HUD; screenshot-review lighting, contrast and small-screen layout.
 6. A separate test experience validates real save/load and shutdown; use no production player keys.

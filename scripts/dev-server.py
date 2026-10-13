@@ -93,6 +93,33 @@ def listener_owned(port, launched_pid):
     return False
 
 
+STALE_LOCK = 60  # startup holds the lock for at most ~5 s; an older lock was left by a killed process
+
+
+def take_lock(lock: Path) -> bool:
+    for _ in range(2):
+        try:
+            descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            if lock.is_symlink() or time.time() - lock.stat().st_mtime < STALE_LOCK:
+                return False
+            # Move the stale lock aside atomically. If another starter replaced it meanwhile, put theirs back.
+            aside = lock.with_name(f"serve.lock.stale-{os.getpid()}")
+            try:
+                os.replace(lock, aside)
+            except FileNotFoundError:
+                continue
+            if time.time() - aside.stat().st_mtime < STALE_LOCK:
+                os.replace(aside, lock)
+                return False
+            aside.unlink()
+            print("moonbrick: removed a stale startup lock left by an interrupted Rojo launch.")
+            continue
+        os.close(descriptor)
+        return True
+    return False
+
+
 def ensure(project: Path):
     project = project.resolve()
     cfg = json.loads((project / "default.project.json").read_text(encoding="utf-8"))
@@ -123,8 +150,9 @@ def ensure(project: Path):
     rojo = shutil.which("rojo")
     if not rojo: raise ValueError("Rojo unavailable; run setup-tools.sh")
     lock = state / "serve.lock"
-    descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    os.close(descriptor)
+    if not take_lock(lock):
+        print("moonbrick: another Rojo startup for this project is in progress; retry in a few seconds.")
+        return None
     process = None
     try:
         with (project / ".rojo.log").open("a", encoding="utf-8") as log:
@@ -148,7 +176,7 @@ def ensure(project: Path):
         raise ValueError("Rojo startup timed out; see .rojo.log")
     finally:
         # Never stop another project/process. A failed owned launch may still be running; report its PID.
-        lock.unlink()
+        lock.unlink(missing_ok=True)
         if process and process.poll() is None and not marker.exists():
             print(f"moonbrick: owned startup process PID {process.pid} may still be running; inspect .rojo.log before retrying.")
 

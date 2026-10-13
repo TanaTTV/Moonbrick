@@ -19,6 +19,7 @@ local gate = Cooldown.new()
 local crystals: { [string]: BasePart } = {}
 local claimed: { [string]: boolean } = {}
 local scores: { [Player]: number } = {}
+local tracks: { [Player]: { character: Model, position: Vector3, time: number } } = {}
 local lastTimer = -1
 Net.declare("CrystalState")
 Net.declare("CrystalToast")
@@ -35,15 +36,44 @@ local function broadcast()
 		send(player)
 	end
 end
+local function flat(position: Vector3): Vector3
+	return Vector3.new(position.X, 0, position.Z)
+end
+-- The client simulates its own character, so a raw HumanoidRootPart position can be teleported anywhere.
+-- Compare it with the last server-trusted position; pull implausible jumps back and refuse to use them.
+-- The baseline advances at most once a second so a speed hack can't creep forward in small steps.
+local function trustedRoot(player: Player): (BasePart?, Humanoid?)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not (character and root and root:IsA("BasePart") and humanoid) then
+		return nil, nil
+	end
+	local now = os.clock()
+	local track = tracks[player]
+	if not track or track.character ~= character then
+		tracks[player] = { character = character, position = root.Position, time = now }
+		return root, humanoid
+	end
+	local moved = (flat(root.Position) - flat(track.position)).Magnitude
+	if Rules.plausibleMove(moved, now - track.time, humanoid.WalkSpeed) then
+		if now - track.time >= 1 then
+			track.position, track.time = root.Position, now
+		end
+		return root, humanoid
+	end
+	root.AssemblyLinearVelocity = Vector3.zero
+	character:PivotTo(CFrame.new(track.position) * root.CFrame.Rotation)
+	track.time = now
+	return nil, humanoid
+end
 local function collect(player: Player, name: string): (boolean, string)
 	local crystal = crystals[name]
 	if not crystal then
 		return false, "Unknown crystal"
 	end
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local distance = if root and root:IsA("BasePart") then (root.Position - crystal.Position).Magnitude else math.huge
+	local root, humanoid = trustedRoot(player)
+	local distance = if root then (root.Position - crystal.Position).Magnitude else math.huge
 	local allowed, reason = Rules.canCollect(
 		round.state,
 		PlayerData.get(player) ~= nil,
@@ -99,6 +129,7 @@ Net.handle("CrystalSnapshot", {}, state, { rate = 2 })
 PlayerData.loaded:Connect(send)
 Players.PlayerRemoving:Connect(function(player)
 	scores[player] = nil
+	tracks[player] = nil
 	gate:clear(player)
 end)
 DebugHooks.register("CrystalRush", {
@@ -138,6 +169,9 @@ task.spawn(function()
 					end
 				end
 			end
+		end
+		for _, player in Players:GetPlayers() do
+			trustedRoot(player) -- sample movement even when nobody is collecting
 		end
 		local timer = math.ceil(snapshot.remaining)
 		if changed or timer ~= lastTimer then
