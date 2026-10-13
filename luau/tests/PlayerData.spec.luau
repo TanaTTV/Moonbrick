@@ -229,6 +229,24 @@ return function(t: any)
 		t.ok(a:save())
 	end)
 
+	t.test("a final save with unserializable data still releases the lock and keeps the last good save", function()
+		local store = PlayerData.memoryStore()
+		local a = session(store, "A")
+		t.ok(a:load())
+		a.data.Coins = 5
+		t.ok(a:save())
+		a.data.Coins = math.huge
+		local ok, err = a:save(true)
+		t.eq(ok, false)
+		t.ok(string.find(err, "lock released", 1, true), err)
+		t.eq(a.released, true)
+		t.eq(store.values.Player_1.lock, nil)
+		t.eq(store.values.Player_1.data.Coins, 5)
+		local b = session(store, "B")
+		t.ok(b:load(), "another server can load immediately")
+		t.eq(b.data.Coins, 5)
+	end)
+
 	t.test("cycles, sparse arrays, mixed keys and Instances cannot silently lose data", function()
 		local cycle = {}
 		cycle.self = cycle

@@ -241,6 +241,9 @@ end
 
 -- Warnings/errors (plus lines containing `filter`) since K.mark(); "clean" if none.
 function K.logs(filter: any, limit: any)
+	-- GetLogHistory lags warn() by a frame; without this, a warning raised in the same call reads as "clean".
+	task.wait()
+	task.wait()
 	local out, h = {}, LogService:GetLogHistory()
 	for i = (K._mark or 0) + 1, #h do
 		local m = h[i]
@@ -640,9 +643,14 @@ end
 
 -- Pre-publish audit: deprecated APIs, input that doesn't work on every platform, risky remotes, leftovers.
 function K.audit()
+	if game:GetService("RunService"):IsRunning() then
+		-- Playtests add Roblox's own legacy scripts (PlayerModule, Chat, Animate): hundreds of false positives.
+		return "K.audit() runs in Edit mode only; stop the playtest and run it there"
+	end
 	local SESok = pcall(SES)
-	local issues = {}
+	local issues, total = {}, 0
 	local function add(s: any)
+		total += 1
 		if #issues < 60 then
 			table.insert(issues, s)
 		end
@@ -695,7 +703,8 @@ function K.audit()
 	if not workspace.StreamingEnabled then
 		add("Workspace.StreamingEnabled is off (slower joins/higher memory on mobile)")
 	end
-	return #issues == 0 and "audit clean" or (#issues .. " issues\n" .. table.concat(issues, "\n"))
+	local shown = total > #issues and " (first " .. #issues .. " shown)" or ""
+	return total == 0 and "audit clean" or (total .. " issues" .. shown .. "\n" .. table.concat(issues, "\n"))
 end
 
 -- selene: allow(global_usage)

@@ -21,7 +21,7 @@ local function render(snapshot: any, totals: any)
 		return
 	end
 	status.Text = snapshot.state .. " · " .. math.ceil(snapshot.remaining) .. "s"
-	score.Text = `Round: {totals.caught}   Coins: {totals.coins}`
+	score.Text = `Crystals: {totals.caught}   Coins: {totals.coins}`
 	if totals.caught > previous then
 		VFX.flash({ color = Color3.fromRGB(255, 215, 133), time = 0.15 })
 	end

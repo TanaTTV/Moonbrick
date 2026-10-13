@@ -11,7 +11,7 @@ Run everything, then give a go / no-go with reasons. Publishing itself is the us
 **Must pass (no-go otherwise)**
 - [ ] `bash tools/check.sh` → `OK`.
 - [ ] Playtest: `K.test()` all passing; every feature's debug hooks run with `K.logs()` clean.
-- [ ] `K.audit()`: no unvalidated remotes, no deprecated APIs in game code.
+- [ ] `K.audit()` (Edit mode): no unvalidated remotes, no deprecated APIs in game code.
 - [ ] **Data safety:** review template diff, changed store name and migrations. Studio uses memory by default; test persistent saves only with `studioStore = "live"` in a separate disposable test experience/store. Prove two-server locking, disconnect/rejoin, provider failures and shutdown round-trip. Never enable API access against production keys for testing. Developer-product receipt processing needs durable idempotence, not just an in-game purchase helper.
 - [ ] Rojo is connected and synced (Studio shows the current code), and the place is saved — publishing publishes the place, not the files.
 

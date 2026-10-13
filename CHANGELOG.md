@@ -12,6 +12,7 @@
 - Add optional native Blender FBX workflow, shared art manifests, static-prop native round-trip tests and source/budget/overwrite safety.
 - Add server Cooldown/Round/Economy libraries and a complete buildable Crystal Rush example with server-fed HUD, shared rounds and validated pickups.
 - Add cross-platform CI, host/headless/isolated Studio regressions, actual 0.1 upgrade checks, real Rojo integration and measured output benchmark.
+- QA fixes: `PlayerData.set`/`increment` reject non-finite/unserializable values; a final save with invalid data still releases the lock (keeping the last good save) instead of locking the player out for 10 minutes; failed manual saves warn. `K.logs()` no longer misses warnings raised in the same call. `K.audit()` reports its true total and refuses to run in playtests (engine scripts produced hundreds of false positives). Crystal Rush HUD label reads "Crystals".
 - V1 release gates remain open; no 1.0 version/tag/publication is implied by these changes.
 
 ## 0.1.0

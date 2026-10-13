@@ -29,7 +29,7 @@ In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. O
 | `K.record(name, fn(t), {every?, timeout?, maxRows?})` → `K.results(name, wait?)` | bounded sampler (600 rows, 500 chars/row by default); `K.cancel(name)` stops it; replacing a name cancels its predecessor |
 | `K.screen(path)` | screen `x,y` of a part for `user_mouse_input` (Client) |
 | `K.perf(top?)` | instance/part counts, heaviest classes, Studio memory |
-| `K.audit()` | deprecated APIs, unvalidated remotes, console-unfriendly input, leftovers |
+| `K.audit()` | Edit mode only: deprecated APIs, unvalidated remotes, console-unfriendly input, leftovers |
 | `K.toModelJson(path)` | basic primitives/lights/values only; complex meshes/UI/rigs/effects/references require native Rojo syncback or `.rbxm` |
 
 ## Rules

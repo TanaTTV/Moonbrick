@@ -255,9 +255,15 @@ function Session.save(self: Session, release: boolean?): (boolean, string?)
 		validate(self.data)
 		return deepCopy(self.data)
 	end)
+	local invalid: string? = nil
 	if not copied then
-		self.busy = false
-		return false, tostring(data)
+		if not release then
+			self.busy = false
+			return false, tostring(data)
+		end
+		-- Invalid data can never be written. Still release the lock (keeping the last good save) so the
+		-- player isn't locked out of every server until LOCK_TIMEOUT.
+		invalid = tostring(data)
 	end
 	local lastError = "unknown error"
 	for attempt = 1, math.min(self.retries, 3) do
@@ -269,7 +275,9 @@ function Session.save(self: Session, release: boolean?): (boolean, string?)
 					lost = true
 					return nil
 				end
-				stored.data = deepCopy(data) -- stable snapshot on every UpdateAsync callback invocation
+				if not invalid then
+					stored.data = deepCopy(data) -- stable snapshot on every UpdateAsync callback invocation
+				end
 				stored.lock = if release then nil else lockFor(self)
 				if info then
 					return stored, info:GetUserIds(), info:GetMetadata()
@@ -286,6 +294,9 @@ function Session.save(self: Session, release: boolean?): (boolean, string?)
 				self.released = true
 			end
 			self.busy = false
+			if invalid then
+				return false, `invalid data not saved (lock released, last good save kept): {invalid}`
+			end
 			return true
 		end
 		lastError = tostring(err)
@@ -418,10 +429,10 @@ local function sessionLost(player: Player, session: Session, reason: string)
 		return
 	end
 	sessions[player] = nil
-	failed[player] = true
 	if player.Parent ~= Players then
-		return
+		return -- already left; onLeave cleared `failed`, don't re-add a reference to a gone Player
 	end
+	failed[player] = true
 	local callback = config and config.onSessionLost
 	if callback then
 		callback(player, reason)
@@ -557,6 +568,14 @@ function PlayerData.set(player: Player, key: string, value: any)
 		warn(`PlayerData.set({player.Name}, {key}): data not loaded`)
 		return
 	end
+	local valid, reason = pcall(function()
+		validate(value)
+		return true
+	end)
+	if not valid then
+		warn(`PlayerData.set({player.Name}, {key}): rejected value: {reason}`)
+		return
+	end
 	data[key] = value
 	syncLeaderstat(player, key, value)
 end
@@ -568,6 +587,10 @@ function PlayerData.increment(player: Player, key: string, delta: number): numbe
 		return nil
 	end
 	local new = (data[key] or 0) + delta
+	if type(new) ~= "number" or new ~= new or math.abs(new) == math.huge then
+		warn(`PlayerData.increment({player.Name}, {key}): rejected non-finite result`)
+		return nil
+	end
 	data[key] = new
 	syncLeaderstat(player, key, new)
 	return new
@@ -620,6 +643,7 @@ function PlayerData.save(player: Player): boolean
 	end
 	local ok, err = session:save(false)
 	if not ok then
+		warn(`PlayerData.save({player.Name}) failed: {err}`)
 		sessionLost(player, session, err or "session ownership lost")
 	end
 	return ok

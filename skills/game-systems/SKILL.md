@@ -68,4 +68,4 @@ end, { rate = 3 })
 **Round loop** — one server state machine (`"Intermission" | "Playing" | "Ended"`), broadcast with `Net.fireAll("Round", state, timeLeft)`, clients render it; hooks `skip`, `state`.
 
 ## Before you finish a feature
-`bash tools/check.sh` → specs for rule-heavy logic in `tests/` → playtest recipe (studio skill) including UI recording → `K.audit()` → commit.
+`bash tools/check.sh` → specs for rule-heavy logic in `tests/` → playtest recipe (studio skill) including UI recording → `K.audit()` (Edit mode) → commit.

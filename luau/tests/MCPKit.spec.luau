@@ -1,5 +1,18 @@
 return function(t: any)
 	local K = t.require(game:GetService("ServerStorage").MCPKit)
+	t.test("logs include a warning raised in the same call", function()
+		local saved = K._mark -- don't move the caller's mark
+		K.mark()
+		print("MCPKit logs same-call probe") -- print + filter: a warn would pollute the caller's later K.logs()
+		local logs = K.logs("same-call probe")
+		K._mark = saved
+		t.ok(string.find(logs, "same-call probe", 1, true), "warning missed; K.logs read stale history")
+	end)
+	t.test("audit refuses to run in a playtest instead of reporting engine-script false positives", function()
+		if game:GetService("RunService"):IsRunning() then
+			t.ok(string.find(K.audit(), "Edit mode only", 1, true))
+		end
+	end)
 	t.test("model attributes use explicit Rojo types", function()
 		local part = Instance.new("Part")
 		part:SetAttribute("Active", true)
