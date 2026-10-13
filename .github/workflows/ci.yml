@@ -51,6 +51,8 @@ jobs:
           exe=.artifacts/tools/luau/luau
           if [ "$RUNNER_OS" = Windows ]; then exe="$exe.exe"; fi
           python scripts/test-luau.py --luau "$exe"
+          # Memory-store run of the live DataStore acceptance harness; also fails if its PlayerData copy drifted.
+          python acceptance/datastore/run-headless.py --luau "$exe"
       - name: Scaffold, check and build
         env:
           GIT_AUTHOR_NAME: Moonbrick CI

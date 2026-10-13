@@ -84,7 +84,7 @@ Evidence: host 35, headless 43, Studio 54 specs; adversarial client exploits rej
 ## Next phase: open V1 release requirements
 
 Not blockers for PR #1; all must be closed (or explicitly waived) before tagging V1:
-1. **Real DataStore acceptance** in a separately published *test* experience (never production keys): two servers contending for one key, forced disconnect, throttling/outage, shutdown during load/save, `BindToClose` under real shutdown, restart round-trip, and an `onInvalidData` recovery against a real record.
+1. **Real DataStore acceptance** in a separately published *test* experience (never production keys): two servers contending for one key, forced disconnect, throttling/outage, shutdown during load/save, `BindToClose` under real shutdown, restart round-trip, and an `onInvalidData` recovery against a real record. Prepared harness/runbook: [acceptance/datastore](../acceptance/datastore/README.md); live runs require owner approval and remain pending.
 2. **Touch, gamepad and small-screen** check of the Crystal Rush HUD and prompts (Device Emulator), plus target-device performance.
 3. **Fresh install**: empty tool caches, plugin install/reload from the marketplace; update the user's installed 0.1 copy and re-test skills from the installed copy.
 4. **Crystal Rush polish**: enable `StreamingEnabled`; art pass so crystals read as amethyst (currently bloom to white).
