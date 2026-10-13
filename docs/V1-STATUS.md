@@ -1,6 +1,6 @@
 # V1 development ledger
 
-Branch: `dev/v1-stability`. Base: `c451028`. No release, merge, asset upload or production DataStore writes authorized/performed.
+Branch: `dev/v1-stability`. Base: `c451028`. Merged to `main` via PR #1 with owner approval (2026-10-13). No release, version tag, asset upload, Roblox publication or production DataStore access has been authorized or performed.
 
 ## Architecture audit
 
@@ -53,15 +53,15 @@ Highest priority: `tools/check.sh` erased failure exit codes and could print `OK
 | `python scripts/test-blender.py --blender <installed 5.2.2>` | PASS | Native static FBX export/reimport/scale, budget enforcement, source fidelity, output refusal; no Roblox upload/import |
 | Crystal Rush scaffold | Check/build passed | Real Rojo .rbxlx generation and strict checking; rendered gameplay acceptance still pending |
 | Claude Code 2.1.296 plugin validation | PASS | Strict marketplace, plugin manifest and skills; no model session |
-| GitHub Actions | Pending hosted checks | Local validation above is separate; record the hosted run result after the development PR completes |
+| GitHub Actions | PASS | PR #1 head `93c7802`: push and pull_request runs green on Ubuntu, Windows, macOS and plugin validation |
 
 The Studio test bundle never parents instances to the user's place, installs game scripts, changes Play/Edit mode, or calls a persistent store. It does **not** prove a Rojo-connected game's Players lifecycle, real network traffic, physics, rendering, or live DataStore behavior.
 
 ## Required gates before calling V1 stable
 
-- [ ] Run CI on Windows/macOS/Linux and validate the plugin in supported Claude Code versions.
+- [x] Run CI on Windows/macOS/Linux (green on PR #1). Still open: validate the plugin across *other* supported Claude Code versions (only 2.1.296 tested).
 - [ ] Fresh installation with empty tool caches and plugin install/reload; tool-bootstrap binaries and actual 0.1 upgrade were tested, full installation/reload still needs acceptance.
-- [ ] Dedicated disposable Studio place: connect Rojo, start actual server/client and multi-client playtests, exercise DebugHooks and all libraries.
+- [x] Dedicated disposable Studio place: Rojo plugin connected with live edit/create/delete sync; Local Server + 2 Players playtest (shared round, separate scores, leaderboard, round reset, leave/save); DebugHooks; 54/54 Studio specs. See PR #1 QA below.
 - [ ] Dedicated test experience/DataStore: two real servers contend for one player key, forced disconnect, throttling/outage, shutdown during load/save, restart round-trip. Never use production player keys.
 - [ ] Validate large/UI/rig/terrain import fidelity and connection diff against original saved places; Workspace/Lighting remain owned by the original place.
 - [ ] Blender rigs/animation/PBR fixtures and Studio reimport; local static-prop Blender round-trip already passed.
@@ -69,6 +69,30 @@ The Studio test bundle never parents instances to the user's place, installs gam
 - [x] Controlled tree benchmark: 22,883 vs 2,480 output chars; medians 34 vs 81 ms. Compact output reduced characters but increased call latency. Exact Claude tokens/cost were not measured.
 - [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting.
 - [ ] Approval for release version/tag, merge and publication.
+
+## PR #1 QA and stability follow-ups (2026-10-13)
+
+Independent QA (Claude Code) verified the branch in disposable unpublished places with memory stores only, and fixed:
+- PlayerData: non-finite/unserializable values via `set`/`increment` caused failed saves and a 10-minute cross-server lockout on leave; now rejected, and an invalid final save still releases the lock keeping the last good save.
+- PlayerData: saved data failing validation caused a permanent kick loop with retry storms; now refused once without writing, with opt-in `onInvalidData` recovery (`PlayerData.sanitize`) that backs up the original (bounded, never discarded).
+- Crystal Rush: client-owned `HumanoidRootPart` allowed teleport/speed-hack pickups; now checked against a server-trusted position.
+- MCPKit: `K.logs()` missed same-call warnings (one-frame log lag); `K.audit()` reported hundreds of engine-script false positives in playtests.
+- Tooling: symlink scan limited to managed paths; stale `serve.lock` reclaimed; Windows WMI timeout; CI Rokit rate limits and push/PR run cancellation.
+
+Evidence: host 35, headless 43, Studio 54 specs; adversarial client exploits rejected; multiplayer and live Rojo acceptance passed. Full report: local `.artifacts/qa/QA-REPORT.md` (not committed).
+
+## Next phase: open V1 release requirements
+
+Not blockers for PR #1; all must be closed (or explicitly waived) before tagging V1:
+1. **Real DataStore acceptance** in a separately published *test* experience (never production keys): two servers contending for one key, forced disconnect, throttling/outage, shutdown during load/save, `BindToClose` under real shutdown, restart round-trip, and an `onInvalidData` recovery against a real record.
+2. **Touch, gamepad and small-screen** check of the Crystal Rush HUD and prompts (Device Emulator), plus target-device performance.
+3. **Fresh install**: empty tool caches, plugin install/reload from the marketplace; update the user's installed 0.1 copy and re-test skills from the installed copy.
+4. **Crystal Rush polish**: enable `StreamingEnabled`; art pass so crystals read as amethyst (currently bloom to white).
+5. **Blender**: replace deprecated `Material.use_nodes` (removed in Blender 6.0); rigs/animation/PBR fixtures.
+6. **Net observability**: rejections warn once per player per remote; add counters/metrics for persistent abuse.
+7. **Formatting**: StyLua-format `tests/headless.luau` and format-check it in CI.
+8. **Import fidelity** for large/UI/rig/terrain places; broader benchmark with exact token accounting.
+9. **Release approval**: version, tag and publication remain owner decisions.
 
 ## Remaining implementation priorities
 
