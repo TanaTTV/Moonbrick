@@ -19,6 +19,7 @@ local Net = {}
 export type Validator = (value: any) -> (boolean, string?)
 export type Options = {
 	rate: number?, -- max calls per second per player (default 10); bursts up to the same number
+	maxInFlight: number?, -- maximum yielding request handlers per player (default 4)
 }
 
 -- Validators ---------------------------------------------------------------------
@@ -122,9 +123,12 @@ function Net.check(validators: { Validator }, args: { any }, count: number): (bo
 		return false, `too many arguments ({count} > {#validators})`
 	end
 	for i, validate in validators do
-		local ok, err = validate(args[i])
-		if not ok then
-			return false, `argument {i}: {err or "invalid"}`
+		local ran, ok, err = pcall(validate, args[i])
+		if not ran then
+			return false, `argument {i}: validator failed`
+		end
+		if ok ~= true then
+			return false, `argument {i}: {tostring(err or "invalid")}`
 		end
 	end
 	return true
@@ -137,6 +141,7 @@ local FOLDER = "Remotes"
 local function folder(): Instance
 	local existing = ReplicatedStorage:FindFirstChild(FOLDER)
 	if existing then
+		assert(existing:IsA("Folder"), "Net: ReplicatedStorage.Remotes must be a Folder")
 		return existing
 	end
 	if RunService:IsServer() then
@@ -145,13 +150,17 @@ local function folder(): Instance
 		f.Parent = ReplicatedStorage
 		return f
 	end
-	return ReplicatedStorage:WaitForChild(FOLDER)
+	local result = ReplicatedStorage:WaitForChild(FOLDER, 10)
+	assert(result and result:IsA("Folder"), "Net: Remotes folder unavailable after 10s")
+	return result
 end
 
 local function remote(name: string, className: "RemoteEvent" | "RemoteFunction"): Instance
+	assert(#name > 0 and #name <= 64 and not name:find("%c"), "Net: remote names must be 1..64 printable characters")
 	local f = folder()
 	local existing = f:FindFirstChild(name)
 	if existing then
+		assert(existing:IsA(className), `Net: remote '{name}' is not a {className}`)
 		return existing
 	end
 	if RunService:IsServer() then
@@ -164,12 +173,21 @@ local function remote(name: string, className: "RemoteEvent" | "RemoteFunction")
 	if not r then
 		error(`Net: remote '{name}' not found; is the server script that calls Net.on/handle('{name}') running?`, 3)
 	end
+	assert(r:IsA(className), `Net: remote '{name}' is not a {className}`)
 	return r
 end
 
 -- Token bucket per player per remote.
 local buckets: { [string]: { [Player]: { tokens: number, last: number } } } = {}
 local warned: { [string]: { [Player]: boolean } } = {}
+local inFlight: { [string]: { [Player]: { count: number } } } = {}
+local registered: { [string]: boolean } = {}
+
+local function checkOptions(opts: Options?): number
+	local rate = (opts and opts.rate) or 10
+	assert(finite(rate) and rate >= 1, "Net: rate must be finite and >= 1")
+	return rate
+end
 
 local function allow(name: string, player: Player, rate: number): boolean
 	local perRemote = buckets[name]
@@ -212,15 +230,20 @@ if RunService:IsServer() then
 		for _, perRemote in warned do
 			perRemote[player] = nil
 		end
+		for _, perRemote in inFlight do
+			perRemote[player] = nil
+		end
 	end)
 end
 
 -- Server: handle a client -> server event.
 function Net.on(name: string, validators: { Validator }, handler: (Player, ...any) -> (), opts: Options?)
 	assert(RunService:IsServer(), "Net.on is server-only; clients use Net.listen")
-	local rate = (opts and opts.rate) or 10
+	local rate = checkOptions(opts)
+	assert(not registered[name], `Net: '{name}' already has a server handler`)
 	local r = remote(name, "RemoteEvent") :: RemoteEvent
-	r.OnServerEvent:Connect(function(player, ...)
+	registered[name] = true
+	return r.OnServerEvent:Connect(function(player, ...)
 		if not allow(name, player, rate) then
 			return reject(name, player, "rate limit")
 		end
@@ -235,8 +258,16 @@ end
 -- Server: answer a client -> server request. Invalid or rate-limited requests return nil.
 function Net.handle(name: string, validators: { Validator }, handler: (Player, ...any) -> ...any, opts: Options?)
 	assert(RunService:IsServer(), "Net.handle is server-only; clients use Net.invoke")
-	local rate = (opts and opts.rate) or 10
+	local rate = checkOptions(opts)
+	local maxInFlight = (opts and opts.maxInFlight) or 4
+	assert(
+		finite(maxInFlight) and maxInFlight >= 1 and maxInFlight % 1 == 0,
+		"Net: maxInFlight must be a positive integer"
+	)
+	assert(not registered[name], `Net: '{name}' already has a server handler`)
 	local r = remote(name, "RemoteFunction") :: RemoteFunction
+	registered[name] = true
+	inFlight[name] = {}
 	r.OnServerInvoke = function(player, ...)
 		if not allow(name, player, rate) then
 			reject(name, player, "rate limit")
@@ -247,12 +278,27 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 			reject(name, player, err or "invalid")
 			return nil
 		end
-		return handler(player, ...)
+		local perRemote = inFlight[name]
+		local pending = perRemote[player] or { count = 0 }
+		perRemote[player] = pending
+		if pending.count >= maxInFlight then
+			reject(name, player, "too many pending requests")
+			return nil
+		end
+		pending.count += 1
+		local results = table.pack(pcall(handler, player, ...))
+		pending.count -= 1
+		if not results[1] then
+			warn(`Net: handler '{name}' failed: {tostring(results[2])}`)
+			return nil
+		end
+		return table.unpack(results, 2, results.n)
 	end
 end
 
 -- Server: create an event the server fires to clients (so clients can listen before the first fire).
 function Net.declare(name: string)
+	assert(RunService:IsServer(), "Net.declare is server-only")
 	remote(name, "RemoteEvent")
 end
 

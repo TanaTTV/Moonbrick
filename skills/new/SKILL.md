@@ -9,7 +9,7 @@ argument-hint: "[project name]"
 The plugin root is two folders above this skill's base directory (`<base>/../..`); call it `KIT`.
 
 1. **Name and location.** Use the argument as the name, or ask. Default location `~/RobloxProjects/<name>` (on Windows `C:\Users\<you>\RobloxProjects\<name>`) unless the user picked one. The folder must not exist or must be empty.
-2. **Tell the user what will be installed** if `~/.rokit/bin/rokit` doesn't exist yet: Rokit (toolchain manager, into `~/.rokit`), and through it Rojo, luau-lsp, selene and StyLua; plus the Rojo plugin for Studio. Proceed once they're fine with it.
+2. **Prerequisites:** Python 3.10+, Git Bash on Windows, git and curl. Tell the user the project installs checksum-verified Rokit 1.2.0 if missing, pinned Rojo/luau-lsp/selene/StyLua and the Rojo Studio plugin. Respect existing installation authorization; don't ask again if already granted. `--no-tools` scaffolds without installation.
 3. Run `bash "KIT/scripts/new-project.sh" "<dir>" "<name>"` (Bash tool). It copies the template, the kit and its tests, installs tools, downloads Roblox type definitions and makes the first git commit.
 4. Start syncing: `CLAUDE_PROJECT_DIR="<dir>" bash "KIT/scripts/dev-start.sh" </dev/null`.
 5. Tell the user:

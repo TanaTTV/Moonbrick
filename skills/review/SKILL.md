@@ -12,7 +12,7 @@ Gather evidence first (cheap, parallel where possible), then judge. Scope: the a
 1. `bash tools/check.sh` — count problems by kind.
 2. Edit datamodel: `K.audit()` and `K.perf()` (one call).
 3. Playtest (studio recipe): `K.test()`, then drive the main features via debug hooks; collect `K.logs()`.
-4. Security read-through: every `Net.on`/`Net.handle`/`OnServerEvent` — are arguments validated *and* game rules checked on the server (ownership, distance, cooldowns, prices from server tables)? Any data saved outside `PlayerData`?
+4. Security read-through: every `Net.on`/`Net.handle`/`OnServerEvent` — are arguments validated *and* game rules checked on the server (ownership, distance from a server-trusted position — a raw client `HumanoidRootPart` can be teleported — cooldowns, prices from server tables)? Any data saved outside `PlayerData`?
 5. Visuals: 2–4 screenshots of the key moments (spawn view, main UI, a big effect at its peak) — `screen_capture` with a camera position, or during the playtest.
 6. Read `docs/design.md` if it exists.
 

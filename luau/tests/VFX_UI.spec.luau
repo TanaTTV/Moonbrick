@@ -41,9 +41,14 @@ return function(t: any)
 	t.test("buttons get theme styling, touch-size minimum and click wiring", function()
 		local holder = Instance.new("Folder")
 		local clicked = false
-		local b = UI.button({ parent = holder, text = "BUY", style = "success", onClick = function()
-			clicked = true
-		end })
+		local b = UI.button({
+			parent = holder,
+			text = "BUY",
+			style = "success",
+			onClick = function()
+				clicked = true
+			end,
+		})
 		t.eq(b.Parent, holder)
 		t.eq(b.Text, "BUY")
 		t.ok(b:FindFirstChildOfClass("UICorner"), "corner")
@@ -61,5 +66,18 @@ return function(t: any)
 		t.eq(title.Text, "Shop")
 		t.ok(p:FindFirstChildOfClass("UIListLayout"), "list layout")
 		p:Destroy()
+	end)
+
+	t.test("show hide show cancels stale scale animations", function()
+		local panel = Instance.new("Frame")
+		UI.show(panel, true)
+		UI.show(panel, false)
+		UI.show(panel, true)
+		task.wait(0.4)
+		t.eq(panel.Visible, true)
+		local scale = panel:FindFirstChildOfClass("UIScale")
+		assert(scale, "UI.show did not create a UIScale")
+		t.near(scale.Scale, 1, 0.001)
+		panel:Destroy()
 	end)
 end

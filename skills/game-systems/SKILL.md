@@ -21,7 +21,7 @@ Read the library source in `src/kit/` when you need details; the headers documen
 ## Non-negotiables
 1. **Server is the authority.** Clients ask (`Net.fireServer`), the server decides (prices, cooldowns, damage, rewards) and tells clients (`Net.fire`). Never trust a client-sent amount, price, position or target without checking it against server state.
 2. **Every client→server remote goes through `Net.on`/`Net.handle`** with a validator per argument (`Net.string(max)`, `Net.int(min,max)`, `Net.number`, `Net.vector3(max)`, `Net.instance(class, ancestor)`, `Net.oneOf(...)`, `Net.optional(v)`) and a sensible `rate`. Then still check game rules (owns item? close enough? cooldown over?).
-3. **Saved data only through `PlayerData`.** One `PlayerData.start({ template, leaderstats })` per game; change values with `set`/`increment`/`update`; call `PlayerData.save(player)` right after purchases. Adding a field = add it to the template (old saves get it automatically). Renaming/removing fields needs a migration step in `update` — ask first.
+3. **Saved data through `PlayerData`.** One start per game. `update` is a nonyielding transaction: errors/yields/invalid values are cancelled; keep remotes and saves outside it. Check `save`'s boolean before reporting durability. Add template fields to reconcile; renames/removals/store-name changes require a migration plan. Studio defaults to memory, live testing uses a separate test experience/store. Lost sessions become inaccessible and kick by default. Saved data that fails validation is never loaded or overwritten (player gets `onLoadFailed`); to recover, set `onInvalidData = PlayerData.sanitize` or a custom nonyielding fix-up — the original is kept in the record's `backups`.
 4. **UI follows server state.** Show/hide on server events, not only in the UI's own click handlers.
 5. **Debug hooks for every feature** (`DebugHooks.register(name, { action = fn })`) returning short status strings, so playtests can drive it without clicking.
 6. **Juice every reward and state change** (see game-design): use VFX + UI animation, not instant silent changes.
@@ -38,7 +38,9 @@ Read the library source in `src/kit/` when you need details; the headers documen
 
 **Net**: server `on(name, validators, handler, {rate})`, `handle(...)` (returns values), `declare(name)` (server→client events, so clients can listen first), `fire(player, name, ...)`, `fireAll(name, ...)`; client `fireServer`, `listen(name, fn)`, `invoke`.
 
-**PlayerData**: `start({template, leaderstats={"Coins"}, name?, autosave?})`, `get(player)`, `wait(player)`, `set`, `increment`, `update(player, fn)`, `save(player)`, `loaded` event `(player, data)`.
+**PlayerData**: `start({template, leaderstats={"Coins"}, name?, autosave?, onLoadFailed?, onSessionLost?, onInvalidData?})`, `get(player)`, `wait(player)`, `set`, `increment`, `update(player, fn)`, `save(player)`, `loaded` event `(player, data)`.
+
+**Server genre systems**: `Cooldown.new(clock?)` → `use(player, seconds)`, `remaining`, `clear`, `prune`; `Round.new({minPlayers, intermission, duration, results, clock?})` → `step(serverPlayerCount)`, `snapshot`, Studio-driver `skip`; `Economy.buy(data, serverCatalog, itemId)` / `award(data, amount)` are pure integer-currency rules for `PlayerData.update`. Clear player-keyed state on leave. These helpers do not process paid product receipts.
 
 ## Recipes
 **Purchase**
@@ -54,7 +56,10 @@ Net.on("Buy", { Net.oneOf("Sword", "Bow") }, function(player, itemId)
 		d.Coins -= price
 		table.insert(d.Inventory, itemId)
 	end)
-	PlayerData.save(player)
+	if not PlayerData.save(player) then
+		warn("Purchase applied locally; save failed and will be retried")
+		return Net.fire(player, "Toast", "Purchase applied; saving is delayed")
+	end
 	Net.fire(player, "Bought", itemId)
 end, { rate = 3 })
 ```
@@ -63,4 +68,4 @@ end, { rate = 3 })
 **Round loop** — one server state machine (`"Intermission" | "Playing" | "Ended"`), broadcast with `Net.fireAll("Round", state, timeLeft)`, clients render it; hooks `skip`, `state`.
 
 ## Before you finish a feature
-`bash tools/check.sh` → specs for rule-heavy logic in `tests/` → playtest recipe (studio skill) including UI recording → `K.audit()` → commit.
+`bash tools/check.sh` → specs for rule-heavy logic in `tests/` → playtest recipe (studio skill) including UI recording → `K.audit()` (Edit mode) → commit.

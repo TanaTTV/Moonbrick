@@ -29,7 +29,8 @@ UI.Theme = {
 export type Style = "primary" | "secondary" | "danger" | "success"
 
 local function tween(inst: Instance, time: number, props: { [string]: any }, style: Enum.EasingStyle?): Tween
-	local t = TweenService:Create(inst, TweenInfo.new(time, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
+	local t =
+		TweenService:Create(inst, TweenInfo.new(time, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
 	t:Play()
 	return t
 end
@@ -240,23 +241,44 @@ function UI.panel(p: PanelProps): Frame
 	return f
 end
 
--- Show/hide with a pop animation. Safe to call repeatedly in any order.
+local showStates = setmetatable({} :: { [GuiObject]: { tween: Tween? } }, { __mode = "k" })
+
+-- Show/hide with a pop animation. Cancel superseded animations before starting a new one.
 function UI.show(gui: GuiObject, visible: boolean)
 	local scale = scaleOf(gui)
 	local token = (gui:GetAttribute("UIShowToken") :: number? or 0) + 1
 	gui:SetAttribute("UIShowToken", token)
-	if visible then
-		gui.Visible = true
-		scale.Scale = 0.6
-		tween(scale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
-	else
-		tween(scale, 0.12, { Scale = 0.6 }).Completed:Once(function()
-			if gui:GetAttribute("UIShowToken") == token then -- not re-shown meanwhile
-				gui.Visible = false
-				scale.Scale = 1
+	local state = showStates[gui]
+	if not state then
+		state = { tween = nil }
+		showStates[gui] = state
+		gui.Destroying:Once(function()
+			local current = showStates[gui]
+			showStates[gui] = nil
+			if current and current.tween then
+				current.tween:Cancel()
 			end
 		end)
 	end
+	if state.tween then
+		state.tween:Cancel()
+	end
+	if visible then
+		gui.Visible = true
+		scale.Scale = 0.6
+		state.tween = tween(scale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+	else
+		state.tween = tween(scale, 0.12, { Scale = 0.6 })
+	end
+	(state.tween :: Tween).Completed:Once(function(playback)
+		if playback == Enum.PlaybackState.Completed and gui:GetAttribute("UIShowToken") == token then
+			state.tween = nil
+			if not visible then
+				gui.Visible = false
+				scale.Scale = 1
+			end
+		end
+	end)
 end
 
 -- Short notification that stacks at the top of the screen and fades out.

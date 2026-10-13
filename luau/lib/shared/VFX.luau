@@ -33,7 +33,13 @@ export type Options = {
 local GOLD = Color3.fromRGB(255, 200, 40)
 local PURPLE = Color3.fromRGB(170, 90, 255)
 
-local function tween(inst: Instance, time: number, props: { [string]: any }, style: Enum.EasingStyle?, dir: Enum.EasingDirection?): Tween
+local function tween(
+	inst: Instance,
+	time: number,
+	props: { [string]: any },
+	style: Enum.EasingStyle?,
+	dir: Enum.EasingDirection?
+): Tween
 	local t = TweenService:Create(
 		inst,
 		TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),
@@ -108,7 +114,13 @@ function VFX.pillar(position: Vector3, opts: Options?)
 	beam.Size = Vector3.new(400, width, width)
 	beam.CFrame = CFrame.new(position + Vector3.new(0, 200, 0)) * CFrame.Angles(0, 0, math.pi / 2)
 	beam.Parent = workspace
-	tween(beam, time, { Size = Vector3.new(400, 0.2, 0.2), Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	tween(
+		beam,
+		time,
+		{ Size = Vector3.new(400, 0.2, 0.2), Transparency = 1 },
+		Enum.EasingStyle.Quad,
+		Enum.EasingDirection.In
+	)
 	Debris:AddItem(beam, time + 0.1)
 end
 
@@ -270,8 +282,13 @@ function VFX.shake(duration: number, strength: number)
 	if not shakeBound then
 		shakeBound = true
 		RunService:BindToRenderStep("VFXShake", Enum.RenderPriority.Camera.Value + 1, function()
+			if os.clock() - shakeStart >= shakeDuration then
+				RunService:UnbindFromRenderStep("VFXShake")
+				shakeBound = false
+				return
+			end
 			local camera = workspace.CurrentCamera
-			if camera.CameraType ~= Enum.CameraType.Scriptable then
+			if camera and camera.CameraType ~= Enum.CameraType.Scriptable then
 				camera.CFrame *= VFX.shakeOffset()
 			end
 		end)

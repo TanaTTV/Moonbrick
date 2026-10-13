@@ -2,24 +2,31 @@
   "name": "__PROJECT_NAME__",
   "tree": {
     "$className": "DataModel",
+    "$ignoreUnknownInstances": true,
     "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
       "Shared": { "$path": "src/shared" },
       "Kit": { "$path": "src/kit/shared" }
     },
     "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
       "Server": { "$path": "src/server" },
       "Kit": { "$path": "src/kit/server" }
     },
     "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
       "StarterPlayerScripts": {
+        "$ignoreUnknownInstances": true,
         "Client": { "$path": "src/client" }
       }
     },
     "ServerStorage": {
+      "$ignoreUnknownInstances": true,
       "MCPKit": { "$path": "tools/MCPKit.luau" },
       "Tests": { "$path": "tests" }
     },
     "Workspace": {
+      "$ignoreUnknownInstances": true,
       "World": { "$path": "src/world" }
     }
   }

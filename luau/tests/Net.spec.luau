@@ -54,4 +54,22 @@ return function(t: any)
 		t.eq(ok2, false)
 		t.ok(string.find(err2, "argument 2", 1, true), err2)
 	end)
+
+	t.test("a broken custom validator rejects instead of throwing through a remote", function()
+		local ok, err = Net.check({
+			function()
+				error("validator bug")
+			end,
+		}, { "input" }, 1)
+		t.eq(ok, false)
+		t.ok(err:find("validator failed", 1, true))
+		t.eq(
+			Net.check({
+				function()
+					return "truthy"
+				end,
+			}, { "input" }, 1),
+			false
+		)
+	end)
 end

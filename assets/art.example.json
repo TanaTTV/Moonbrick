@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "units": "meters",
+  "source": "source/props.blend",
+  "style": {
+    "name": "Moonstone Garden",
+    "shapeLanguage": "Broad silhouettes, six-sided crystals, soft low-poly rocks, readable small-screen proportions",
+    "materials": "Matte amethyst and slate, restrained gold highlights; one shared palette and material family",
+    "lighting": "Cool ambient fill, warm focal light, no global bloom wash; verify readability on mobile",
+    "palette": { "primary": "#A68AE8", "secondary": "#80B6C8", "accent": "#FFD785", "surface": "#232E48", "text": "#F0F4FF" }
+  },
+  "assets": [
+    { "id": "crystal", "kind": "static", "objects": ["Crystal"], "maxTriangles": 500, "maxMaterials": 2, "maxTextureSize": 1024 },
+    { "id": "rock", "kind": "static", "objects": ["Rock"], "maxTriangles": 500, "maxMaterials": 2, "maxTextureSize": 1024 }
+  ]
+}

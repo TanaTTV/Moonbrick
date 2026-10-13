@@ -1,5 +1,7 @@
 # Roadmap
 
+V1 implementation and acceptance evidence is tracked in [docs/V1-STATUS.md](docs/V1-STATUS.md). Development includes stability fixes, optional native Blender export, server genre helpers, a buildable example and CI. Release remains gated on real multi-client/provider/mesh-import/device checks and approval. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Next: Creator Store assets (planned, not started)
 Use the Roblox Creator Store safely from Claude. The Studio MCP already has `search_asset` / `insert_asset`; moonbrick adds the safety and project integration around them.
 - **`/moonbrick:asset <what>`**: search (prefer verified creators, free, moonbrick-format kits), compare thumbnails, then insert into a **quarantine folder** (`ServerStorage.Quarantine`), never straight into the live game.

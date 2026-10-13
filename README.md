@@ -40,15 +40,15 @@ Moonbrick fixes the workflow end to end:
 | Without Moonbrick | With Moonbrick |
 |---|---|
 | Claude edits scripts through Studio, one slow call at a time | Claude edits **real files**; Rojo syncs them into Studio instantly |
-| Bugs show up mid-playtest | **Strict type checking + linting** catches them in ~3 s, before you press Play |
-| Testing a feature takes 15+ Studio calls | **~5 calls**: debug hooks drive the feature, recorders capture UI/camera/effects, logs come back filtered |
-| Inspecting the game returns ~20,000 characters | Compact helpers return **~100** |
+| Bugs show up mid-playtest | **Strict type checking + linting** fail closed before you press Play |
+| Testing requires repeated manual inspection | Debug hooks, bounded UI/camera/effect recorders and filtered logs support batched checks |
+| Hierarchy inspection returns detailed paths/relationships | Compact tree output used **89.2% fewer characters** in a controlled fixture; [timings and limits](docs/BENCHMARKS.md) |
 | Every feature written from scratch | **Ready-made systems**: VFX, UI, secure remotes, saved data |
 | "It works" = done | **Design-first**: reference images, drawn textures, screenshot review |
 
 ## 📦 Install
 
-You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), plus `git` and `curl`. On Windows, Git Bash (already required by Claude Code).
+You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), Python 3.10+, `git` and `curl`. On Windows, use Git Bash. Blender is optional.
 
 ```text
 /plugin marketplace add TanaTTV/Moonbrick
@@ -61,7 +61,7 @@ Then start your first game:
 /moonbrick:new my-game
 ```
 
-The first project installs [Rokit](https://github.com/rojo-rbx/rokit) and, through it, pinned versions of [Rojo](https://rojo.space), [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp), [selene](https://github.com/Kampfkarren/selene) and [StyLua](https://github.com/JohnnyMorganz/StyLua), plus the Rojo plugin for Studio. Open Studio → Plugins → **Rojo** → **Connect**, and you're building.
+The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) 1.2.0 and pinned Rojo/luau-lsp/Selene/StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, and review the connection diff. The development branch contains unreleased V1 work; [current evidence and release gates](docs/V1-STATUS.md) distinguish local checks from production readiness.
 
 ## 🧰 What you get
 
@@ -75,6 +75,7 @@ The first project installs [Rokit](https://github.com/rojo-rbx/rokit) and, throu
 | `/moonbrick:review` | Code, security, performance, mobile/console and **screenshot-based design** review → a prioritized fix list. |
 | `/moonbrick:ship` | Pre-publish checklist including player-data safety, then a tagged release. |
 | `/moonbrick:update` | Update a project's bundled Moonbrick code to the installed version. |
+| `/moonbrick:assets` | Optional native Blender workflow: shared art style/budgets, local FBX export, source hashes and Studio import review. |
 
 ### Skills (load automatically when relevant)
 
@@ -109,7 +110,7 @@ flowchart LR
     S -->|tests · hooks · recorders · logs · screenshots| C
 ```
 
-- **Code lives in files.** Claude uses its normal, instant file tools; Rojo mirrors them into Studio. Your hand-built map, terrain and lighting stay in the place file and are never overwritten.
+- **Code lives in files.** Rojo mirrors managed files into Studio. Service boundaries preserve unknown content; mapped folders are owned by their files. Imported Workspace/terrain/lighting stay in the original place. Always review the connection diff, including same-name object collisions.
 - **Studio is for building and testing.** MCP calls go through MCPKit one-liners; playtests are driven by Studio-only debug hooks, so no fragile mouse simulation.
 - **Everything is checked.** Strict Luau types, selene lint, unit tests in a real server VM, and screenshots for anything visual.
 - **A session hook keeps `rojo serve` running** for whichever project you open.
@@ -134,7 +135,8 @@ Copied into every project under `src/kit/`, so your game never depends on the pl
 | **VFX** | One-call effects: shockwave, energy sphere, light pillar, bursts, auras, glows, highlights, camera shake, flash, FOV punch, colour-grade spikes, title slams |
 | **UI** | Themed buttons, panels, labels and toasts with hover/press/pulse/pop animation, a 48 px touch minimum and gamepad support. Restyle everything from one theme table. |
 | **Net** | Remotes with per-argument validation (rejects wrong types, NaN/∞, extra args) and per-player rate limits |
-| **PlayerData** | DataStore saving with session locking, retries, autosave, shutdown saves, template upgrades, and an in-memory fallback in Studio |
+| **PlayerData** | Session tokens, serialized snapshot saves, retries, shutdown tracking, template reconcile, nonyielding transactions and a memory-only Studio default |
+| **Cooldown / Round / Economy** | Server cooldown gates, a deterministic multiplayer round controller, and validated in-game currency/purchase rules |
 | **DebugHooks** | Studio-only actions so tests can drive features without clicking; absent in live games |
 
 ```lua
@@ -147,7 +149,7 @@ Net.on("Buy", { Net.oneOf("Sword", "Bow") }, function(player, item)
 end, { rate = 3 })
 ```
 
-All libraries are strictly typed and covered by unit tests (`tests/kit/`).
+Game libraries are strictly typed and have specs under `tests/kit/`. Dynamic MCPKit inspection is explicitly nonstrict and linted. [Validation instructions](docs/DEVELOPMENT.md) cover host/headless/isolated Studio tests; real multi-client and provider gates remain separate.
 
 ## 🎨 Design-first
 
@@ -167,10 +169,13 @@ Good-looking games come from art, not code. Moonbrick's design workflow:
 - [ ] **Safe Creator Store assets:** search and insert with quarantine, a backdoor scan and export to files
 - [ ] **Community kit library:** share and install reusable systems (shops, abilities, round loops) as kits
 - [ ] Design-review rubric, lighting presets, and the texture generator as a reusable tool
-- [ ] Blender → Roblox asset pipeline
+- [x] Optional native Blender → FBX export with budgets/source hashes and actual Blender static-prop round-trip tests
+- [ ] Blender FBX → Studio rendered mesh/rig/PBR import acceptance
 - [ ] Verified macOS run (scripts are written for it; reports welcome)
 
 See [ROADMAP.md](ROADMAP.md) for details.
+
+Try the buildable [Crystal Rush example](examples/crystal-rush/README.md): `python scripts/create-example.py <new-folder>`. It exercises rounds, pickups, cooldowns, saved coins, server-fed UI and debug hooks; rendered gameplay acceptance is documented separately.
 
 ## 🤝 Contributing
 
