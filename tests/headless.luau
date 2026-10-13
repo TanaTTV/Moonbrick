@@ -1,4 +1,5 @@
--- Minimal deterministic scheduler. This is a store/session test, not Roblox engine emulation.
+--!nonstrict
+-- Minimal deterministic scheduler and isolated remote fixtures, not Roblox engine emulation.
 local task = {}
 local function warn(...) end -- warnings are expected in provider-failure fixtures
 local queue = {}
@@ -28,9 +29,34 @@ local services = {
 }
 local game = { JobId = "headless", GetService = function(_, name) return services[name] end }
 local Instance = { new = function(className)
-	assert(className == "BindableEvent", "headless runner does not implement " .. className)
-	return { Event = {} }
+	if className == "BindableEvent" then
+		return { Event = {} }
+	end
+	assert(className == "Folder" or className == "Part", "headless runner does not implement " .. className)
+	return {
+		_type = "Instance",
+		GetFullName = function() return className end,
+		IsA = function(_, requested)
+			return requested == className or (className == "Part" and requested == "BasePart")
+		end,
+		IsDescendantOf = function(self, ancestor)
+			local parent = self.Parent
+			while parent do
+				if parent == ancestor then return true end
+				parent = parent.Parent
+			end
+			return false
+		end,
+		Destroy = function(self) self.Parent = nil end,
+	}
 end }
+local Vector3 = { new = function(x, y, z)
+	return { _type = "Vector3", X = x, Y = y, Z = z, Magnitude = math.sqrt(x*x + y*y + z*z) }
+end }
+local function typeof(value)
+	return type(value) == "table" and value._type or type(value)
+end
+local workspace = Instance.new("Folder")
 
 local function event()
 	local listeners = {}
@@ -48,10 +74,13 @@ local function environment()
 	return services.Players, player, function() assert(close, "no shutdown handler"); close() end
 end
 
+local modules, suites, loadPlayerData, loadNet
+services.Players.PlayerRemoving = event()
 -- MODULES --
 
 local passed, failed = 0, 0
 local t = {}
+t.loadNet = loadNet
 function t.eq(actual, expected, msg)
 	assert(actual == expected, (msg or "") .. " expected " .. tostring(expected) .. ", got " .. tostring(actual))
 end

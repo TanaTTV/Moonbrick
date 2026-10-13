@@ -11,7 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def bundle():
     module = (ROOT / "luau/lib/server/PlayerData.luau").read_text(encoding="utf-8")
     suite = (ROOT / "luau/tests/PlayerData.spec.luau").read_text(encoding="utf-8")
-    code = "local function loadPlayerData()\n" + module + "\nend\nlocal modules = { PlayerData = loadPlayerData() }\n"
+    code = "loadPlayerData = function()\n" + module + "\nend\nmodules = { PlayerData = loadPlayerData() }\n"
+    net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
+    net_suite = (ROOT / "luau/tests/Net.spec.luau").read_text(encoding="utf-8")
+    code += "loadNet = function(game, Instance, os, warn)\n" + net + "\nend\n"
+    code += "services.ReplicatedStorage = { Kit = { Net = 'Net' } }\n"
+    code += "modules.Net = loadNet(game, Instance, os, warn)\n"
     for name in ("Cooldown", "Round", "Economy"):
         source = (ROOT / f"luau/lib/server/{name}.luau").read_text(encoding="utf-8")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ServerScriptService.Kit.{name} = '{name}'\n"
@@ -19,7 +24,7 @@ def bundle():
     rules = (ROOT / "examples/crystal-rush/src/server/Rules.luau").read_text(encoding="utf-8")
     rules_spec = (ROOT / "examples/crystal-rush/tests/Rules.spec.luau").read_text(encoding="utf-8")
     code += "modules.Rules = (function()\n" + rules + "\nend)()\nservices.ServerScriptService.Server = { Rules = 'Rules' }\n"
-    code += "local suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)()}\n"
+    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)(), (function()\n" + net_suite + "\nend)()}\n"
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
 
 
