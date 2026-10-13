@@ -6,7 +6,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.head_ref || github.ref_name }}
+  # Per event: a push run and its pull_request run must not cancel each other (shows as failed checks).
+  group: ci-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   stability:
