@@ -17,6 +17,7 @@ PlayerData.start({
 local round = Round.new({ minPlayers = 1, intermission = 5, duration = 45, results = 5 })
 local gate = Cooldown.new()
 local crystals: { [string]: BasePart } = {}
+local crystalTransparency: { [BasePart]: number } = {}
 local claimed: { [string]: boolean } = {}
 local scores: { [Player]: number } = {}
 local tracks: { [Player]: { character: Model, position: Vector3, time: number } } = {}
@@ -97,6 +98,10 @@ local function collect(player: Player, name: string): (boolean, string)
 	claimed[name] = true -- no yields before claiming/rewarding; concurrent input cannot award twice
 	scores[player] = (scores[player] or 0) + 1
 	crystal.Transparency = 1
+	local light = crystal:FindFirstChildOfClass("PointLight")
+	if light then
+		light.Enabled = false
+	end
 	local prompt = crystal:FindFirstChildOfClass("ProximityPrompt")
 	if prompt then
 		prompt.Enabled = false
@@ -107,6 +112,7 @@ end
 for _, child in workspace:WaitForChild("World"):WaitForChild("Arena"):WaitForChild("Crystals"):GetChildren() do
 	if child:IsA("BasePart") then
 		crystals[child.Name] = child
+		crystalTransparency[child] = child.Transparency
 		local prompt = child:FindFirstChildOfClass("ProximityPrompt")
 		if prompt then
 			prompt.Enabled = false
@@ -155,7 +161,11 @@ task.spawn(function()
 				table.clear(scores)
 				table.clear(claimed)
 				for _, crystal in crystals do
-					crystal.Transparency = 0
+					crystal.Transparency = crystalTransparency[crystal]
+					local light = crystal:FindFirstChildOfClass("PointLight")
+					if light then
+						light.Enabled = true
+					end
 					local prompt = crystal:FindFirstChildOfClass("ProximityPrompt")
 					if prompt then
 						prompt.Enabled = true
