@@ -4,7 +4,7 @@ description: Create a new Roblox game project set up for fast AI development (Ro
 argument-hint: "[project name]"
 ---
 
-# New roblox-kit project
+# New moonbrick project
 
 The plugin root is two folders above this skill's base directory (`<base>/../..`); call it `KIT`.
 

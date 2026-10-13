@@ -1,10 +1,10 @@
 {
-  "name": "roblox-kit",
-  "owner": { "name": "roblox-kit contributors" },
+  "name": "moonbrick",
+  "owner": { "name": "TanaTTV" },
   "description": "Claude Code plugin for fast, safe Roblox game development with Rojo and the Studio MCP.",
   "plugins": [
     {
-      "name": "roblox-kit",
+      "name": "moonbrick",
       "source": "./",
       "description": "Build Roblox games fast with Claude: Rojo setup, Studio MCP speed toolkit, one-call playtests, game libraries and design reviews."
     }

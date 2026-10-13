@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the toolchain for a roblox-kit project (run from the project root):
+# Install the toolchain for a moonbrick project (run from the project root):
 # Rokit (if missing) -> rojo, luau-lsp, selene, StyLua from rokit.toml -> Rojo Studio plugin -> Roblox type definitions.
 set -euo pipefail
 export PATH="$HOME/.rokit/bin:$PATH"

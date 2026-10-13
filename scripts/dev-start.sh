@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart hook: in a roblox-kit project, make sure `rojo serve` is running for it.
-# Prints one short status line (added to Claude's context). Silent outside roblox-kit projects.
+# SessionStart hook: in a moonbrick project, make sure `rojo serve` is running for it.
+# Prints one short status line (added to Claude's context). Silent outside moonbrick projects.
 set -u
 cat >/dev/null # hook event JSON on stdin; not needed
 dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
@@ -16,16 +16,16 @@ name="$(grep -m1 '"name"' default.project.json | sed 's/.*"name"[^"]*"\([^"]*\)"
 status="$(curl -s --max-time 1 "http://localhost:$port/api/rojo" 2>/dev/null | tr -c '[:print:]' '\n')"
 if [ -n "$status" ]; then
 	if printf '%s\n' "$status" | grep -qx "$name"; then
-		echo "roblox-kit: rojo already serving '$name' on :$port."
+		echo "moonbrick: rojo already serving '$name' on :$port."
 	else
 		other="$(printf '%s\n' "$status" | grep -A1 -x 'projectName' | tail -1)"
-		echo "roblox-kit: port $port is serving Rojo project '$other', not '$name', so this project may NOT be syncing (a server started before a project rename keeps its old name). Ask the user before stopping that server; it may be another open game. Setting \"servePort\" in default.project.json lets both run."
+		echo "moonbrick: port $port is serving Rojo project '$other', not '$name', so this project may NOT be syncing (a server started before a project rename keeps its old name). Ask the user before stopping that server; it may be another open game. Setting \"servePort\" in default.project.json lets both run."
 	fi
 	exit 0
 fi
 
 if ! command -v rojo >/dev/null 2>&1; then
-	echo "roblox-kit: rojo is not installed; run /roblox-kit:new's setup step (rokit install) before syncing."
+	echo "moonbrick: rojo is not installed; run /moonbrick:new's setup step (rokit install) before syncing."
 	exit 0
 fi
 
@@ -36,7 +36,7 @@ for _ in 1 2 3 4 5 6; do
 	curl -s --max-time 1 "http://localhost:$port/api/rojo" >/dev/null 2>&1 && break
 done
 if curl -s --max-time 1 "http://localhost:$port/api/rojo" >/dev/null 2>&1; then
-	echo "roblox-kit: started rojo for '$name' on :$port. If Studio shows stale code, the user must click Connect in the Rojo plugin."
+	echo "moonbrick: started rojo for '$name' on :$port. If Studio shows stale code, the user must click Connect in the Rojo plugin."
 else
-	echo "roblox-kit: rojo failed to start; see .rojo.log."
+	echo "moonbrick: rojo failed to start; see .rojo.log."
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Import a place file into a roblox-kit project with Rojo syncback.
+# Import a place file into a moonbrick project with Rojo syncback.
 # Usage: bash import-place.sh <project-dir> <place.rbxl|place.rbxlx>
 #
 # Layout after import: each service's existing content lives under src/<Service>/ and the Kit is mounted

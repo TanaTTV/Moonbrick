@@ -13,7 +13,7 @@ Measured: the MCP adds ~60 ms per call (a Studio-side floor). Your own turn cost
    - Edit / Server: `local K=_G.K or require(game.ServerStorage.MCPKit)`
    - Client (playtest): `local K=_G.K or require(game.ReplicatedStorage:WaitForChild("MCPKit"))`
 
-In a roblox-kit project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. Otherwise, if `require` errors, read `luau/MCPKit.luau` from this plugin (two folders above this skill's base directory) and pass its full contents to `execute_luau` once per datamodel. Edit-mode `require` is cached across calls: after the kit file changes, refresh with `_G.K=require(game.ServerStorage.MCPKit:Clone())`.
+In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. Otherwise, if `require` errors, read `luau/MCPKit.luau` from this plugin (two folders above this skill's base directory) and pass its full contents to `execute_luau` once per datamodel. Edit-mode `require` is cached across calls: after the kit file changes, refresh with `_G.K=require(game.ServerStorage.MCPKit:Clone())`.
 
 ## MCPKit (`K`)
 | Call | Returns |
@@ -33,7 +33,7 @@ In a roblox-kit project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. 
 | `K.toModelJson(path)` | Rojo `.model.json` of a Studio-built object |
 
 ## Rules
-- **roblox-kit project? Code goes through files, never MCP.** Edit `src/**/*.luau` with Read/Edit/Grep, then `bash tools/check.sh`. MCP is for world-building, inspection, tests and playtests. Rojo overwrites MCP edits to synced scripts.
+- **moonbrick project? Code goes through files, never MCP.** Edit `src/**/*.luau` with Read/Edit/Grep, then `bash tools/check.sh`. MCP is for world-building, inspection, tests and playtests. Rojo overwrites MCP edits to synced scripts.
 - **Batch into one `execute_luau`.** Several instances/properties = one script. Read everything in one call; write everything in one call.
 - **Parallel calls for independent work** — but never two Client-datamodel calls that depend on each other's timing.
 - **Return only what you need.** Prefer `K.tree`/`K.props` over `inspect_instance` (every property) and `search_game_tree` (always pass `path`; without it you get ~20 KB of services).

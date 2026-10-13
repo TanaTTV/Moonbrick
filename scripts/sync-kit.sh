@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copy roblox-kit's Luau code (MCPKit, libraries, library tests) into a project, replacing older copies.
+# Copy moonbrick's Luau code (MCPKit, libraries, library tests) into a project, replacing older copies.
 # Game code is never touched: only tools/MCPKit.luau, src/kit/** and tests/kit/** are written.
 # Usage: bash sync-kit.sh <project-dir>
 set -euo pipefail
@@ -14,5 +14,5 @@ cp -R "$kit/luau/lib/shared/." "$project/src/kit/shared/"
 cp -R "$kit/luau/lib/server/." "$project/src/kit/server/"
 cp "$kit/template/src/kit/server/DebugHooks.luau" "$kit/template/src/kit/server/DevTools.server.luau" "$project/src/kit/server/"
 cp -R "$kit/luau/tests/." "$project/tests/kit/"
-echo "$version" >"$project/tools/.roblox-kit-version"
-echo "roblox-kit $version synced into $project"
+echo "$version" >"$project/tools/.moonbrick-version"
+echo "moonbrick $version synced into $project"

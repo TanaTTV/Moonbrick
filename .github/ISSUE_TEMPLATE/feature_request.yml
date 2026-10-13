@@ -1,0 +1,15 @@
+name: Feature or gotcha
+description: Suggest a feature, library, or a Roblox pitfall Moonbrick should know about
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should Moonbrick do or know? Reference images welcome for design features.
+    validations: { required: true }
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: The time it would save or the quality it would add.

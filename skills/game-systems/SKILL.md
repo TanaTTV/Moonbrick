@@ -1,11 +1,11 @@
 ---
 name: game-systems
-description: How to write Roblox gameplay code with roblox-kit's libraries (Kit.VFX, Kit.UI, Kit.Net, Kit.PlayerData, DebugHooks) and server-authoritative patterns. Use before writing or changing any gameplay feature, UI, remote, effect, economy, or saved data in a Roblox project.
+description: How to write Roblox gameplay code with moonbrick's libraries (Kit.VFX, Kit.UI, Kit.Net, Kit.PlayerData, DebugHooks) and server-authoritative patterns. Use before writing or changing any gameplay feature, UI, remote, effect, economy, or saved data in a Roblox project.
 ---
 
 # Game systems
 
-Write features on top of the Kit libraries instead of from scratch: less code, consistent look, and security/data-safety built in. Paths in a roblox-kit project:
+Write features on top of the Kit libraries instead of from scratch: less code, consistent look, and security/data-safety built in. Paths in a moonbrick project:
 
 ```lua
 local Kit = game:GetService("ReplicatedStorage"):WaitForChild("Kit")

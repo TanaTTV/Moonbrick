@@ -1,6 +1,6 @@
-# __PROJECT_NAME__ (roblox-kit project)
+# __PROJECT_NAME__ (Moonbrick project)
 
-Roblox game built with Rojo. Code and generated world objects live on disk and sync into Studio. Use the `roblox-kit:studio` skill for anything touching Studio, `roblox-kit:game-systems` before writing gameplay code, and `roblox-kit:game-design` for design work.
+Roblox game built with Rojo. Code and generated world objects live on disk and sync into Studio. Use the `moonbrick:studio` skill for anything touching Studio, `moonbrick:game-systems` before writing gameplay code, and `moonbrick:game-design` for design work.
 
 ## Where things go
 | Folder | In Studio | For |
@@ -9,7 +9,7 @@ Roblox game built with Rojo. Code and generated world objects live on disk and s
 | `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` | game client code |
 | `src/shared/` | `ReplicatedStorage.Shared` | config + modules used by both |
 | `src/world/` | `Workspace.World` | objects built via MCP, exported as `.model.json` |
-| `src/kit/` | `ReplicatedStorage.Kit`, `ServerScriptService.Kit` | roblox-kit libraries (VFX, UI, Net, PlayerData, DebugHooks). Managed by `/roblox-kit:update`; don't edit, wrap instead |
+| `src/kit/` | `ReplicatedStorage.Kit`, `ServerScriptService.Kit` | moonbrick libraries (VFX, UI, Net, PlayerData, DebugHooks). Managed by `/moonbrick:update`; don't edit, wrap instead |
 | `tests/` | `ServerStorage.Tests` | `*.spec.luau` unit tests (`tests/kit/` = kit's own) |
 | `tools/` | `ServerStorage.MCPKit` | MCP helper + `check.sh` |
 

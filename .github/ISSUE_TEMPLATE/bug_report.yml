@@ -1,0 +1,22 @@
+name: Bug report
+description: Something in Moonbrick didn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you asked Claude to do, what happened, and what you expected.
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output / logs
+      description: Paste `tools/check.sh` output, `K.logs()`, or the error Claude showed.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "Windows 11 / macOS 15, Moonbrick 0.1.0, Rojo 7.7.1"
+    validations: { required: true }
