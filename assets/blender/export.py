@@ -7,7 +7,7 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from assets import validate
+from assets import material_node_tree, validate
 
 manifest_path, output = map(Path, sys.argv[sys.argv.index("--") + 1:])
 manifest = validate(manifest_path)
@@ -42,8 +42,9 @@ for asset in manifest["assets"]:
                 material = slot.material
                 if material is None: continue
                 materials.add(material)
-                if material.use_nodes:
-                    for node in material.node_tree.nodes:
+                node_tree = material_node_tree(material, bpy.app.version)
+                if node_tree is not None:
+                    for node in node_tree.nodes:
                         if node.type == "TEX_IMAGE" and node.image:
                             images.add(node.image)
                             if not mesh.uv_layers: raise ValueError("textured mesh has no UVs: " + obj.name)

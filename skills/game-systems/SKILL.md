@@ -37,6 +37,7 @@ Read the library source in `src/kit/` when you need details; the headers documen
 - Buttons already have hover/press feedback, gamepad selection and a 48 px touch minimum.
 
 **Net**: server `on(name, validators, handler, {rate})`, `handle(...)` (returns values), `declare(name)` (server→client events, so clients can listen first), `fire(player, name, ...)`, `fireAll(name, ...)`; client `fireServer`, `listen(name, fn)`, `invoke`.
+Inspect server `Net.stats()` for copied per-remote `total`, `reasons` and `distinctPlayers` (currently connected rejected players, cleared on leave). Totals last for this server; reasons are truncated to 160 bytes and capped at 16 buckets including `other`. Persistent rejections emit an event-driven summary at most once per remote per 60 seconds after its first warning; use counters for monitoring between summaries.
 
 **PlayerData**: `start({template, leaderstats={"Coins"}, name?, autosave?, onLoadFailed?, onSessionLost?, onInvalidData?})`, `get(player)`, `wait(player)`, `set`, `increment`, `update(player, fn)`, `save(player)`, `loaded` event `(player, data)`.
 

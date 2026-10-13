@@ -193,7 +193,8 @@ export type Session = typeof(setmetatable(
 	Session
 ))
 
-type SessionOptions = { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean?, migrate: Migrate? }
+type SessionOptions =
+	{ jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean?, migrate: Migrate? }
 
 function Session.new(store: Store, key: string, template: { [string]: any }, opts: SessionOptions?): Session
 	local o: SessionOptions = opts or {}

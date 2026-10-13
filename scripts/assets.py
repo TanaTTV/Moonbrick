@@ -13,6 +13,17 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def material_node_tree(material, blender_version: tuple[int, ...], *, enable: bool = False):
+    """Use automatic material nodes on Blender 5+, preserving the pre-5 toggle semantics."""
+    if blender_version < (5, 0, 0):
+        if enable:
+            material.use_nodes = True
+        elif not material.use_nodes:
+            return None
+    # Blender 5 creates the tree by default; use_nodes is deprecated and removed in 6.
+    return material.node_tree
+
+
 def validate(path: Path) -> dict:
     cfg = json.loads(path.read_text(encoding="utf-8"))
     if cfg.get("schemaVersion") != 1: raise ValueError("art manifest schemaVersion must be 1")

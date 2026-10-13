@@ -27,6 +27,8 @@ local modules, suites = {}, {}
     sources = {"PlayerData": "luau/lib/server/PlayerData.luau", "Net": "luau/lib/shared/Net.luau", "VFX": "luau/lib/shared/VFX.luau", "UI": "luau/lib/shared/UI.luau", "MCPKit": "luau/MCPKit.luau"}
     sources.update({name: f"luau/lib/server/{name}.luau" for name in ("Cooldown", "Round", "Economy")})
     sources["Rules"] = "examples/crystal-rush/src/server/Rules.luau"
+    net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
+    prefix += "local function loadNet(game, Instance, os, warn)\n" + net + "\nend\n"
     for name, rel in sources.items():
         source = (ROOT / rel).read_text(encoding="utf-8").replace("_G.K = K", "-- isolated test bundle: no global cache")
         prefix += f"modules.{name} = (function()\n{source}\nend)()\n"
@@ -45,7 +47,7 @@ local modules, suites = {}, {}
         prefix += f"table.insert(suites, (function()\n{source}\nend)())\n"
     return prefix + '''
 local passed, failed, errors = 0, 0, {}
-local t = {}
+local t = {loadNet = loadNet}
 function t.eq(a,b,msg) assert(a == b, (msg or "") .. " expected " .. tostring(b) .. ", got " .. tostring(a)) end
 function t.ok(v,msg) assert(v,msg or "expected truthy") end
 function t.near(a,b,eps,msg) assert(math.abs(a-b) <= (eps or 1e-6),msg or "not near") end

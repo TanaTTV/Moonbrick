@@ -7,6 +7,7 @@
 --   Net.on("BuyItem", { Net.string(32), Net.int(1, 99) }, function(player, itemId, qty) ... end, { rate = 5 })
 --   Net.handle("GetPrice", { Net.string(32) }, function(player, itemId) return 100 end)
 --   Net.fire(player, "Notify", "Saved!")   Net.fireAll("RoundStarted", 3)
+--   Net.stats() -- copied rejection totals/reasons and distinct currently connected players per remote
 -- Client:
 --   Net.fireServer("BuyItem", "sword", 1)   Net.listen("Notify", function(msg) ... end)
 --   local price = Net.invoke("GetPrice", "sword")
@@ -20,6 +21,12 @@ export type Validator = (value: any) -> (boolean, string?)
 export type Options = {
 	rate: number?, -- max calls per second per player (default 10); bursts up to the same number
 	maxInFlight: number?, -- maximum yielding request handlers per player (default 4)
+}
+
+export type RejectionStats = {
+	total: number,
+	reasons: { [string]: number },
+	distinctPlayers: number,
 }
 
 -- Validators ---------------------------------------------------------------------
@@ -179,7 +186,19 @@ end
 
 -- Token bucket per player per remote.
 local buckets: { [string]: { [Player]: { tokens: number, last: number } } } = {}
-local warned: { [string]: { [Player]: boolean } } = {}
+type RejectionState = {
+	total: number,
+	reasons: { [string]: number },
+	reasonCount: number,
+	players: { [Player]: boolean },
+	distinctPlayers: number,
+	pending: number,
+	lastSummary: number,
+}
+local rejections: { [string]: RejectionState } = {}
+local MAX_REASONS = 16 -- includes the overflow bucket; validator messages may be dynamic
+local MAX_REASON_LENGTH = 160
+local SUMMARY_INTERVAL = 60
 local inFlight: { [string]: { [Player]: { count: number } } } = {}
 local registered: { [string]: boolean } = {}
 
@@ -211,15 +230,56 @@ local function allow(name: string, player: Player, rate: number): boolean
 end
 
 local function reject(name: string, player: Player, reason: string)
-	local perRemote = warned[name]
-	if not perRemote then
-		perRemote = {}
-		warned[name] = perRemote
+	local now = os.clock()
+	local state = rejections[name]
+	if not state then
+		state = {
+			total = 0,
+			reasons = {},
+			reasonCount = 0,
+			players = {},
+			distinctPlayers = 0,
+			pending = 0,
+			lastSummary = now,
+		}
+		rejections[name] = state
 	end
-	if not perRemote[player] then -- warn once per player per remote to avoid log spam
-		perRemote[player] = true
-		warn(`Net: rejected '{name}' from {player.Name}: {reason}`)
+	local key = reason:sub(1, MAX_REASON_LENGTH)
+	if key == "other" or (not state.reasons[key] and state.reasonCount >= MAX_REASONS - 1) then
+		key = "other"
 	end
+	if not state.reasons[key] and key ~= "other" then
+		state.reasonCount += 1
+	end
+	state.reasons[key] = (state.reasons[key] or 0) + 1
+	state.total += 1
+	if state.total > 1 then
+		state.pending += 1
+	end
+	if not state.players[player] then -- preserve the first warning per player per remote
+		state.players[player] = true
+		state.distinctPlayers += 1
+		warn(`Net: rejected '{name}' from {player.Name}: {key}`)
+	end
+	-- Event-driven: no background task or warning when rejections stop.
+	if state.pending > 0 and now - state.lastSummary >= SUMMARY_INTERVAL then
+		warn(`Net: '{name}' rejected {state.pending} more calls since the last summary ({state.total} total)`)
+		state.pending = 0
+		state.lastSummary = now
+	end
+end
+
+-- Server-local lifetime counters; player identities are never exposed or retained after leave.
+function Net.stats(): { [string]: RejectionStats }
+	local result: { [string]: RejectionStats } = {}
+	for name, state in rejections do
+		result[name] = {
+			total = state.total,
+			reasons = table.clone(state.reasons),
+			distinctPlayers = state.distinctPlayers,
+		}
+	end
+	return result
 end
 
 if RunService:IsServer() then
@@ -227,8 +287,11 @@ if RunService:IsServer() then
 		for _, perRemote in buckets do
 			perRemote[player] = nil
 		end
-		for _, perRemote in warned do
-			perRemote[player] = nil
+		for _, state in rejections do
+			if state.players[player] then
+				state.players[player] = nil
+				state.distinctPlayers -= 1
+			end
 		end
 		for _, perRemote in inFlight do
 			perRemote[player] = nil
