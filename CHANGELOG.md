@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased (V1 development)
+- Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.
 - Add bounded Net rejection counters with isolated snapshots, active-player cleanup and per-remote summaries limited to once per minute.
 - Fix false-success checking, failed/stale sourcemaps, partial type downloads and formatter failure handling; include dynamic MCPKit in checking/linting.
 - Replace destructive import with staged validation/promotion, backups, reserved-name refusal, advisory script scan and no automatic git staging. Preserve non-imported world content and explicit project settings.

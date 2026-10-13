@@ -41,6 +41,11 @@ jobs:
           rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify
           cd template
           rokit install --no-trust-check
+      - name: Check Luau formatting
+        run: |
+          export PATH="$HOME/.rokit/bin:$PATH"
+          cd template
+          stylua --check --config-path stylua.toml ../luau ../tests/headless.luau ../examples
       - name: Headless persistence regressions
         run: |
           exe=.artifacts/tools/luau/luau
