@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="#-install">Install</a> ·
+  <a href="#install">Install</a> ·
   <a href="#-what-you-get">Features</a> ·
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-game-libraries">Libraries</a> ·
@@ -46,16 +46,38 @@ Moonbrick fixes the workflow end to end:
 | Every feature written from scratch | **Ready-made systems**: VFX, UI, secure remotes, saved data |
 | "It works" = done | **Design-first**: reference images, drawn textures, screenshot review |
 
-## 📦 Install
+<a id="install"></a>
+
+## 📦 Install / Upgrade
 
 You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), Python 3.10+, `git` and `curl`. On Windows, use Git Bash. Blender is optional.
 
-```text
-/plugin marketplace add TanaTTV/Moonbrick
-/plugin install moonbrick@moonbrick
+Install a local checkout with the non-model Claude Code CLI (verified on 2.1.296):
+
+```bash
+claude plugin marketplace add /absolute/path/to/Moonbrick
+claude plugin install moonbrick@moonbrick
+claude plugin list --json
 ```
 
-Then start your first game:
+The list must show `moonbrick@moonbrick` with `enabled: true`. In a Claude Code session you can also add the published marketplace with `/plugin marketplace add TanaTTV/Moonbrick`, then `/plugin install moonbrick@moonbrick`. The acceptance test uses a local checkout, not the remote marketplace.
+
+**Upgrading an installed 0.1.0 copy to the current checkout:** add the desired checkout as the same marketplace source, refresh it, then uninstall/reinstall:
+
+```bash
+claude plugin marketplace add /absolute/path/to/Moonbrick
+claude plugin marketplace update moonbrick
+claude plugin update moonbrick@moonbrick
+claude plugin uninstall moonbrick@moonbrick
+claude plugin install moonbrick@moonbrick
+claude plugin list --json
+```
+
+Both the release and development manifest currently say `0.1.0`. On Claude Code 2.1.296 a local marketplace reads its source folder directly (`readFromFolder` in the list); update alone leaves the old cached `installPath` files unchanged. Reinstall refreshes that cache. Keep the checkout available, and restart Claude Code or run `/reload-plugins` to load the current skills/hooks. Updating the plugin does not migrate existing games; run `/moonbrick:update` in each game afterward.
+
+Run `python scripts/test-install.py` to verify isolated fresh installation, an actual `v0.1.0` plugin upgrade, exact installed file hashes, empty-cache tool setup, scaffolding/check/build from the installed cache, and SessionStart. It uses temporary Claude/home/tool directories, stops its own Rojo server, cleans up, and checks the real plugin directory's listing/mtimes. `--skip-tools` checks installation/upgrade and scaffolding without tool downloads or the positive server test. Neither mode starts a Claude model session. Actual in-session `/reload-plugins` and the remote marketplace are separate manual checks.
+
+Then start your first game in Claude Code:
 
 ```text
 /moonbrick:new my-game

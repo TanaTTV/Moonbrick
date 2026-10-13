@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased (V1 development)
+- Add isolated Claude Code fresh-install/0.1.0 plugin-upgrade acceptance, exact cached component hashes, empty-cache tool bootstrap, installed-copy scaffold/check/build and SessionStart checks. Document reinstall for same-version local marketplace upgrades; support a fast `--skip-tools` mode.
 - Fix false-success checking, failed/stale sourcemaps, partial type downloads and formatter failure handling; include dynamic MCPKit in checking/linting.
 - Replace destructive import with staged validation/promotion, backups, reserved-name refusal, advisory script scan and no automatic git staging. Preserve non-imported world content and explicit project settings.
 - Add transactional/idempotent managed updates with backups, missing service-preservation settings and safe ignore migration. Project scripts require Python 3.10+.
