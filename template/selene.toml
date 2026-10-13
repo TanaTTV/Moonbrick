@@ -1,0 +1,5 @@
+std = "roblox"
+
+[lints]
+unused_variable = "allow"   # luau-lsp already reports these
+multiple_statements = "allow"

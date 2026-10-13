@@ -1,0 +1,26 @@
+{
+  "name": "__PROJECT_NAME__",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": { "$path": "src/shared" },
+      "Kit": { "$path": "src/kit/shared" }
+    },
+    "ServerScriptService": {
+      "Server": { "$path": "src/server" },
+      "Kit": { "$path": "src/kit/server" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": { "$path": "src/client" }
+      }
+    },
+    "ServerStorage": {
+      "MCPKit": { "$path": "tools/MCPKit.luau" },
+      "Tests": { "$path": "tests" }
+    },
+    "Workspace": {
+      "World": { "$path": "src/world" }
+    }
+  }
+}

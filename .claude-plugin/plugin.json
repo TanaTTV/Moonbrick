@@ -1,0 +1,11 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "roblox-kit",
+  "version": "0.1.0",
+  "description": "Build Roblox games fast with Claude: Rojo project setup, a Studio MCP speed toolkit, one-call playtests and unit tests, ready-made game systems (VFX, UI, secure remotes, player data), and design/quality reviews.",
+  "author": {
+    "name": "roblox-kit contributors"
+  },
+  "license": "MIT",
+  "keywords": ["roblox", "rojo", "luau", "game-dev", "mcp"]
+}

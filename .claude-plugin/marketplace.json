@@ -1,0 +1,12 @@
+{
+  "name": "roblox-kit",
+  "owner": { "name": "roblox-kit contributors" },
+  "description": "Claude Code plugin for fast, safe Roblox game development with Rojo and the Studio MCP.",
+  "plugins": [
+    {
+      "name": "roblox-kit",
+      "source": "./",
+      "description": "Build Roblox games fast with Claude: Rojo setup, Studio MCP speed toolkit, one-call playtests, game libraries and design reviews."
+    }
+  ]
+}

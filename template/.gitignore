@@ -1,0 +1,10 @@
+# Place files (the project is the source of truth)
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Generated
+sourcemap.json
+globalTypes.d.luau
+.rojo.log
