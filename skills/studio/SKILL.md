@@ -57,4 +57,6 @@ Hooks bypass input, so UI that only reacts to its own clicks goes stale unnotice
 - **`get_console_output`** can be empty during playtests; use `K.logs()`.
 - **Edit-mode `require` caching:** modules keep their first-loaded code until Studio restarts. Run tests in a playtest (fresh VM), or require a `:Clone()`.
 - **Rojo templates** map Workspace/Lighting properties; never let a project file overwrite Studio's world.
+- **Particle flipbooks:** set `FlipbookLayout` *before* `FlipbookMode` (setting properties from a dictionary loop can do it in the wrong order); otherwise the emitter silently loops frame 1 at 1 fps.
+- **Looks need images, not part shapes.** Stylized effects (eyes, anime fire, smoke) come from textures on BillboardGuis/ParticleEmitters. Draw them with Python (PIL/numpy), serve the folder on `http://localhost:<port>`, and `upload_image` them **one or two per call** (bigger batches time out). Uploads land in the user's account — ask first. Review with `screen_capture` (works in play mode too); freeze particles mid-effect with `ParticleEmitter.TimeScale = 0` for stills.
 - **Unpublished places / no API access:** DataStore calls fail in Studio; `Kit.PlayerData` falls back to memory with a warning.
