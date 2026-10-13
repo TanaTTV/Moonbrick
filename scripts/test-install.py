@@ -75,13 +75,24 @@ def isolated_env(root):
     env = dict(os.environ)
     # Do not inherit a real tool wrapper or a real cache/config override.
     for key in list(env):
-        if key.startswith(("CLAUDE_", "ROKIT_", "GIT_CONFIG_")) or key in ("BASH_ENV", "ENV"):
+        if key.startswith(("CLAUDE_", "ROKIT_", "GIT_CONFIG_", "ACTIONS_")) or key in (
+                "BASH_ENV", "ENV", "GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             del env[key]
     tool_names = ("rokit", "rojo", "luau-lsp", "selene", "stylua")
-    path = []
+    guard = root / "tool-guard"
+    guard.mkdir()
+    for name in tool_names:
+        stub = guard / name
+        stub.write_text(f'#!/bin/sh\necho "isolated install: inherited {name} blocked" >&2\nexit 99\n')
+        stub.chmod(0o755)
+        if os.name == "nt":
+            (guard / (name + ".cmd")).write_text(
+                f'@echo off\necho isolated install: inherited {name} blocked 1>&2\nexit /b 99\n')
+    path = [str(guard)]
     for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if entry and not any((Path(entry) / (name + suffix)).is_file()
-                             for name in tool_names for suffix in ("", ".exe", ".cmd")):
+        # Keep mixed system bins (git/bash/python); only discard Rokit's own bin.
+        normalized = entry.replace("\\", "/").rstrip("/").lower()
+        if entry and not normalized.endswith("/.rokit/bin"):
             path.append(entry)
     env.update({
         "HOME": home.as_posix(), "USERPROFILE": str(home),
@@ -102,6 +113,49 @@ def isolated_env(root):
     for key in ("APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"):
         Path(env[key]).mkdir(parents=True, exist_ok=True)
     return env
+
+
+def validate_owned_pid(pid, launched_pid=None):
+    require(type(pid) is int and pid > 1, "refusing invalid owned process PID")
+    if launched_pid is None:
+        # The detached hook helper owns the launch; this runner has no Popen PID.
+        return
+    require(type(launched_pid) is int and launched_pid > 1, "invalid launched process PID")
+    ancestor = pid
+    for _ in range(64):
+        if ancestor == launched_pid:
+            return
+        if ancestor <= 1:
+            break
+        if os.name == "nt":
+            command = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {ancestor}').ParentProcessId"
+            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                                    capture_output=True, text=True, timeout=20, check=True)
+        else:
+            result = subprocess.run(["ps", "-o", "ppid=", "-p", str(ancestor)],
+                                    capture_output=True, text=True, timeout=3, check=True)
+        value = result.stdout.strip()
+        if not value.isdigit():
+            break
+        ancestor = int(value)
+    raise ValueError("refusing PID outside launched process tree")
+
+
+def stop_owned_process(pid, launched_pid=None):
+    validate_owned_pid(pid, launched_pid)
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=True, timeout=30)
+    else:
+        os.killpg(pid, 15)
+
+
+def protected_plugin_paths():
+    paths = [Path.home() / ".claude/plugins"]
+    if os.environ.get("CLAUDE_CONFIG_DIR"):
+        configured = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "plugins"
+        if configured.resolve() != paths[0].resolve():
+            paths.append(configured)
+    return paths
 
 
 class Acceptance:
@@ -146,7 +200,7 @@ class Acceptance:
 
     def upgrade(self):
         # Archive does not check out, modify or create worktree metadata in any user's tree.
-        data = subprocess.run(["git", "archive", "--format=zip", "v0.1.0"], cwd=ROOT,
+        data = subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", "archive", "--format=zip", "v0.1.0"], cwd=ROOT,
                               env=self.env, check=True, capture_output=True, timeout=30).stdout
         baseline = self.root / "v0.1.0"
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -186,7 +240,8 @@ class Acceptance:
             # Shared CI runners hit GitHub's unauthenticated rate limit (403). Bootstrap Rokit with the
             # installed copy's verified fetcher and authenticate it inside the isolated cache only.
             self.run([sys.executable, str(self.copy / "scripts/fetch-rokit.py")], timeout=300)
-            self.run([self.bash, "-c", 'export PATH="$HOME/.rokit/bin:$PATH"; rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify'])
+            self.run([self.bash, "-c", 'export PATH="$HOME/.rokit/bin:$PATH"; rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify'],
+                     env=dict(self.env, GITHUB_TOKEN=os.environ["GITHUB_TOKEN"]))
         self.run(args, timeout=600)
         require((self.game / "tools/MCPKit.luau").is_file(), "installed scaffold missing MCPKit")
         if not skip_tools:
@@ -248,6 +303,7 @@ class Acceptance:
             self.hook_commands(self.game)
             require(marker.is_file(), "hook exited without establishing owned Rojo startup")
             state = json.loads(marker.read_text())
+            validate_owned_pid(state["pid"])
             require(Path(state["project"]).resolve() == self.game.resolve() and state["port"] == port, "hook claimed wrong project/port")
             # Use the installed probe/decoder. Local loopback only; no Studio or publishing.
             self.run([sys.executable, "-c",
@@ -261,6 +317,7 @@ class Acceptance:
                 state = json.loads(marker.read_text())
                 require(Path(state["project"]).resolve() == self.game.resolve() and state["port"] == port, "refusing to stop an unowned process")
                 pid = state["pid"]
+                validate_owned_pid(pid)
             else:
                 # The shipped helper reports its own PID if startup validation
                 # fails before writing the marker. Never infer ownership merely
@@ -269,11 +326,7 @@ class Acceptance:
                 if failed:
                     pid = int(failed[1])
             if pid is not None:
-                if os.name == "nt":
-                    self.run(["taskkill", "/PID", str(pid), "/T", "/F"])
-                else:
-                    # Rojo's Rokit wrapper and binary share this new session.
-                    os.killpg(pid, 15)
+                stop_owned_process(pid)
                 # Wait for the listener to close before deleting its project/logs.
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
@@ -294,9 +347,10 @@ def main():
     parser.add_argument("--skip-tools", action="store_true")
     args = parser.parse_args()
     rows = []
-    protected = Path.home() / ".claude/plugins"
-    before = snapshot(protected)
-    print(f"Real plugins BEFORE: root_mtime_ns={before.get('root_mtime_ns')}, entries={len(before.get('entries', {}))}, sha256={fingerprint(before)}", flush=True)
+    protected = protected_plugin_paths()
+    before = {path: snapshot(path) for path in protected}
+    for path, state in before.items():
+        print(f"Real plugins BEFORE ({path}): root_mtime_ns={state.get('root_mtime_ns')}, entries={len(state.get('entries', {}))}, sha256={fingerprint(state)}", flush=True)
     try:
         cli = (shutil.which("claude.cmd") or shutil.which("claude")) if os.name == "nt" else shutil.which("claude")
         if os.name == "nt":
@@ -332,12 +386,13 @@ def main():
         print(f"FAIL: {error}", flush=True)
         rows.append(("Prerequisites / cleanup", "FAIL"))
     finally:
-        after = snapshot(protected)
-        print(f"Real plugins AFTER:  root_mtime_ns={after.get('root_mtime_ns')}, entries={len(after.get('entries', {}))}, sha256={fingerprint(after)}", flush=True)
-        if before != after:
-            first, last = before.get("entries", {}), after.get("entries", {})
-            print("Changed real plugin entries: " + json.dumps(sorted(name for name in first.keys() | last.keys() if first.get(name) != last.get(name))))
-        rows.append(("Real ~/.claude/plugins listing/mtime unchanged", "PASS" if before == after else "FAIL"))
+        for path, previous in before.items():
+            after = snapshot(path)
+            print(f"Real plugins AFTER ({path}): root_mtime_ns={after.get('root_mtime_ns')}, entries={len(after.get('entries', {}))}, sha256={fingerprint(after)}", flush=True)
+            if previous != after:
+                first, last = previous.get("entries", {}), after.get("entries", {})
+                print("Changed real plugin entries: " + json.dumps(sorted(name for name in first.keys() | last.keys() if first.get(name) != last.get(name))))
+            rows.append((f"Real {path} listing/mtime unchanged", "PASS" if previous == after else "FAIL"))
     print("\n| Check | Result |\n|---|---|")
     for name, status in rows:
         print(f"| {name} | {status} |")

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased (V1 development)
+- Harden Net rejection reasons, warning summaries and departed-player tracking; isolate install-runner credentials/tools/config snapshots and validate cleanup PIDs. Clarify example-only Workspace/Lighting configuration.
 - Use automatic Blender material node trees on 5+ without accessing the deprecated `use_nodes` toggle; preserve legacy behavior before 5.0.
 - Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.
 - Add bounded Net rejection counters with isolated snapshots, active-player cleanup and per-remote summaries limited to once per minute.

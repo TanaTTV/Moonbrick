@@ -127,7 +127,7 @@ end
 -- Check an argument list against validators. Exposed for tests and custom remotes.
 function Net.check(validators: { Validator }, args: { any }, count: number): (boolean, string?)
 	if count > #validators then
-		return false, `too many arguments ({count} > {#validators})`
+		return false, `too many arguments (max {#validators})`
 	end
 	for i, validate in validators do
 		local ran, ok, err = pcall(validate, args[i])
@@ -209,6 +209,9 @@ local function checkOptions(opts: Options?): number
 end
 
 local function allow(name: string, player: Player, rate: number): boolean
+	if player.Parent == nil then
+		return false
+	end
 	local perRemote = buckets[name]
 	if not perRemote then
 		perRemote = {}
@@ -244,7 +247,18 @@ local function reject(name: string, player: Player, reason: string)
 		}
 		rejections[name] = state
 	end
-	local key = reason:sub(1, MAX_REASON_LENGTH)
+	reason = reason:gsub("%c", " ")
+	local length = math.min(#reason, MAX_REASON_LENGTH)
+	-- Retreat to the start of a codepoint if the byte limit falls inside it.
+	while length > 0 and length < #reason do
+		local nextByte = string.byte(reason, length + 1)
+		if nextByte < 128 or nextByte >= 192 then
+			break
+		end
+		length -= 1
+	end
+	reason = reason:sub(1, length)
+	local key = reason
 	if key == "other" or (not state.reasons[key] and state.reasonCount >= MAX_REASONS - 1) then
 		key = "other"
 	end
@@ -253,13 +267,12 @@ local function reject(name: string, player: Player, reason: string)
 	end
 	state.reasons[key] = (state.reasons[key] or 0) + 1
 	state.total += 1
-	if state.total > 1 then
-		state.pending += 1
-	end
-	if not state.players[player] then -- preserve the first warning per player per remote
+	if player.Parent ~= nil and not state.players[player] then -- first warning per connected player
 		state.players[player] = true
 		state.distinctPlayers += 1
-		warn(`Net: rejected '{name}' from {player.Name}: {key}`)
+		warn(`Net: rejected '{name}' from {player.Name}: {reason}`)
+	else
+		state.pending += 1
 	end
 	-- Event-driven: no background task or warning when rejections stop.
 	if state.pending > 0 and now - state.lastSummary >= SUMMARY_INTERVAL then
@@ -339,6 +352,9 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 		local ok, err = Net.check(validators, { ... }, select("#", ...))
 		if not ok then
 			reject(name, player, err or "invalid")
+			return nil
+		end
+		if player.Parent == nil then
 			return nil
 		end
 		local perRemote = inFlight[name]
