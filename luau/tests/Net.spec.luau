@@ -151,8 +151,8 @@ return function(t: any)
 		return {
 			net = net,
 			warnings = warnings,
-			player = { Name = "Test", UserId = 1 },
-			other = { Name = "Other", UserId = 2 },
+			player = { Name = "Test", UserId = 1, Parent = players } :: any,
+			other = { Name = "Other", UserId = 2, Parent = players } :: any,
 			at = function(value: number)
 				now = value
 			end,
@@ -200,13 +200,13 @@ return function(t: any)
 		local copy = f.net.stats()
 		copy.Copy.total = 999
 		copy.Copy.distinctPlayers = 999
-		copy.Copy.reasons["too many arguments (1 > 0)"] = 999
+		copy.Copy.reasons["too many arguments (max 0)"] = 999
 		copy.Copy.reasons.fake = 999
 		copy.Fake = copy.Copy
 		local fresh = f.net.stats()
 		t.eq(fresh.Copy.total, 1)
 		t.eq(fresh.Copy.distinctPlayers, 1)
-		t.eq(fresh.Copy.reasons["too many arguments (1 > 0)"], 1)
+		t.eq(fresh.Copy.reasons["too many arguments (max 0)"], 1)
 		t.eq(fresh.Copy.reasons.fake, nil)
 		t.eq(fresh.Fake, nil)
 	end)
@@ -304,5 +304,100 @@ return function(t: any)
 		t.ok(coroutine.resume(first))
 		t.ok(coroutine.resume(second))
 		t.eq(f.net.stats().Pending.distinctPlayers, 0)
+	end)
+	t.test("Net extra argument counts share a constant reason", function()
+		for count = 1, 40 do
+			local ok, reason = Net.check({}, {}, count)
+			t.eq(ok, false)
+			t.eq(reason, "too many arguments (max 0)")
+		end
+	end)
+
+	t.test("Net overflow warnings retain the real sanitized UTF-8 reason", function()
+		local f = fixture()
+		f.net.on("Reasons", {
+			function(value: any)
+				return false, value
+			end,
+		}, function() end, { rate = 100 })
+		for i = 1, 15 do
+			f.fire("Reasons", f.player, tostring(i))
+		end
+		local reason = "\n\t\0" .. string.rep("x", 143) .. "é"
+		f.fire("Reasons", f.other, reason)
+		t.eq(f.net.stats().Reasons.reasons.other, 1)
+		t.eq(f.warnings[2], "Net: rejected 'Reasons' from Other: argument 1:    " .. string.rep("x", 143) .. "é")
+		local g = fixture()
+		g.net.on("Unicode", {
+			function()
+				return false, string.rep("x", 147) .. "é"
+			end,
+		}, function() end)
+		g.fire("Unicode", g.player, 1)
+		for key in g.net.stats().Unicode.reasons do
+			t.eq(#key, 159)
+			t.ok(utf8.len(key))
+		end
+	end)
+
+	t.test("Net first warnings are excluded from pending summaries", function()
+		local f = fixture()
+		f.net.on("First", {}, function() end)
+		f.fire("First", f.player, 1)
+		f.at(60)
+		f.fire("First", f.other, 1)
+		t.eq(#f.warnings, 2)
+		f.fire("First", f.player, 1)
+		t.eq(#f.warnings, 3)
+		t.ok(f.warnings[3]:find("rejected 1 more calls", 1, true))
+	end)
+
+	t.test("Net late calls never retain departed players or run handlers", function()
+		local f = fixture()
+		local calls = 0
+		f.net.on("Late", {}, function()
+			calls += 1
+		end, { rate = 1 })
+		f.net.handle("LateRequest", {
+			function()
+				f.leave(f.player)
+				f.player.Parent = nil
+				return true
+			end,
+		}, function()
+			calls += 1
+		end)
+		f.invoke("LateRequest", f.player, 1) -- validator can yield across PlayerRemoving
+		f.fire("Late", f.player, 1)
+		f.invoke("LateRequest", f.player, 1)
+		t.eq(calls, 0)
+		t.eq(f.net.stats().Late.distinctPlayers, 0)
+		t.eq(f.net.stats().LateRequest.distinctPlayers, 0)
+		t.eq(f.net.stats().Late.total, 1)
+		t.eq(#f.warnings, 0)
+		f.player.Parent = {} -- rejoin must start with a fresh bucket
+		f.fire("Late", f.player)
+		t.eq(calls, 1)
+	end)
+	t.test("Net rejection after a validator yields past leave keeps only totals", function()
+		local f = fixture()
+		f.net.on("YieldReject", {
+			function()
+				coroutine.yield()
+				return false, "late validation"
+			end,
+		}, function() end)
+		local call = coroutine.create(function()
+			f.fire("YieldReject", f.player, 1)
+		end)
+		t.ok(coroutine.resume(call))
+		f.leave(f.player)
+		f.player.Parent = nil
+		t.ok(coroutine.resume(call))
+		local stats = f.net.stats().YieldReject
+		t.eq(stats.total, 1)
+		t.eq(stats.reasons["argument 1: late validation"], 1)
+		t.eq(stats.distinctPlayers, 0)
+		t.eq(#f.warnings, 0)
 	end)
 end
