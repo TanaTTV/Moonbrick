@@ -182,6 +182,11 @@ class Acceptance:
         args = [self.bash, (self.copy / "scripts/new-project.sh").as_posix(), self.game.as_posix(), "install-acceptance"]
         if skip_tools:
             args.append("--no-tools")
+        elif os.environ.get("CI") and os.environ.get("GITHUB_TOKEN"):
+            # Shared CI runners hit GitHub's unauthenticated rate limit (403). Bootstrap Rokit with the
+            # installed copy's verified fetcher and authenticate it inside the isolated cache only.
+            self.run([sys.executable, str(self.copy / "scripts/fetch-rokit.py")], timeout=300)
+            self.run([self.bash, "-c", 'export PATH="$HOME/.rokit/bin:$PATH"; rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify'])
         self.run(args, timeout=600)
         require((self.game / "tools/MCPKit.luau").is_file(), "installed scaffold missing MCPKit")
         if not skip_tools:
