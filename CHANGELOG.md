@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased (V1 development)
+- Prepare a self-contained, default-refusing DataStore acceptance project with place/universe gates, synthetic keys, bounded requests/cleanup, memory-only headless validation, and owner runbooks for two-server contention, timed expiry and shutdown/restart. No live DataStore or publishing acceptance is implied.
 - Fix false-success checking, failed/stale sourcemaps, partial type downloads and formatter failure handling; include dynamic MCPKit in checking/linting.
 - Replace destructive import with staged validation/promotion, backups, reserved-name refusal, advisory script scan and no automatic git staging. Preserve non-imported world content and explicit project settings.
 - Add transactional/idempotent managed updates with backups, missing service-preservation settings and safe ignore migration. Project scripts require Python 3.10+.
