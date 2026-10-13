@@ -84,7 +84,8 @@ def listener_owned(port, launched_pid):
         if os.name == "nt":
             # Numeric PID only; never print process arguments, environment or credentials.
             command = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').ParentProcessId"
-            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True, text=True, timeout=3)
+            # WMI/PowerShell cold start can exceed several seconds on busy or CI machines.
+            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True, text=True, timeout=20)
         else:
             result = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
         value = result.stdout.strip()
