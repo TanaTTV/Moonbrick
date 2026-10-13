@@ -27,7 +27,7 @@ Highest priority: `tools/check.sh` erased failure exit codes and could print `OK
 ## Phase 2 implemented
 
 - [x] Optional native Blender FBX exporter with shared art manifest, explicit meter units, selected hierarchies, geometry/material/texture budgets, source hashes, disabled embedded-script autoexecution and new-output-only promotion.
-- [x] Blender 5.2.2 static-prop export/native reimport regression including geometry/scale/source fidelity and refusal of over-budget/overwrite operations.
+- [x] Blender 5.2.2 static/PBR/rig/animation export/native reimport regression: four named PNG maps and decoded pixels/hashes, FBX base-color/normal links, three-bone hierarchy/skin weights, meter scale, active action frames 1..25 at 24fps and actual deformation. Geometry/bone/influence/texture/colorspace failures leave no promoted output; source files and textures remain unchanged. Blender 5+ avoids deprecated material toggles. Studio import/rendering is still unvalidated.
 - [x] Strict server Cooldown/Round/Economy modules and gameplay specs; no paid-receipt/durable-save claims.
 - [x] Buildable Crystal Rush example with server authority, prompt/distance validation, shared rounds, data-backed HUD and debug hooks.
 - [x] Stale UI show/hide tween cancellation and cleanup of idle camera-shake callbacks.
@@ -50,7 +50,7 @@ Highest priority: `tools/check.sh` erased failure exit codes and could print `OK
 | `python scripts/test-integration.py` | PASS | Actual Rojo 7.7.1 build, missing-service syncback, quoted names, prefix preservation, unchanged input place, MessagePack handshake, listener reuse |
 | `python scripts/test-upgrade.py` | PASS | Actual 0.1 scaffold, preserved game files/ports/place IDs, old code backup, checker and Rojo build |
 | `python scripts/prove-checker-fix.py` | PASS | Original checker returns `OK`/exit 0 when analyzer exits 42; current checker returns exit 1 |
-| `python scripts/test-blender.py --blender <installed 5.2.2>` | PASS | Native static FBX export/reimport/scale, budget enforcement, source fidelity, output refusal; no Roblox upload/import |
+| `python scripts/test-blender.py --blender <installed 5.2.2>` | PASS | Native static/PBR/rig/animation round-trips, map pixels/references/hashes, bone/weight/scale fidelity, frames/fps/deformation, negative budgets/colorspace and output refusal; no Roblox upload/import |
 | Crystal Rush scaffold | Check/build passed | Real Rojo .rbxlx generation and strict checking; rendered gameplay acceptance still pending |
 | Claude Code 2.1.296 plugin validation | PASS | Strict marketplace, plugin manifest and skills; no model session |
 | GitHub Actions | PASS | PR #1 head `93c7802`: push and pull_request runs green on Ubuntu, Windows, macOS and plugin validation |
@@ -64,7 +64,7 @@ The Studio test bundle never parents instances to the user's place, installs gam
 - [x] Dedicated disposable Studio place: Rojo plugin connected with live edit/create/delete sync; Local Server + 2 Players playtest (shared round, separate scores, leaderboard, round reset, leave/save); DebugHooks; 54/54 Studio specs. See PR #1 QA below.
 - [ ] Dedicated test experience/DataStore: two real servers contend for one player key, forced disconnect, throttling/outage, shutdown during load/save, restart round-trip. Never use production player keys.
 - [ ] Validate large/UI/rig/terrain import fidelity and connection diff against original saved places; Workspace/Lighting remain owned by the original place.
-- [ ] Blender rigs/animation/PBR fixtures and Studio reimport; local static-prop Blender round-trip already passed.
+- [ ] Blender asset Studio import/rendering acceptance; local static/rig/animation/PBR native round-trips passed, including budgets and failure cleanup. FBX bone/clip mapping and SurfaceAppearance rendering in Roblox remain unvalidated.
 - [ ] Validate rendered example gameplay, touch/gamepad, server authority under adversarial network requests and target-device performance.
 - [x] Controlled tree benchmark: 22,883 vs 2,480 output chars; medians 34 vs 81 ms. Compact output reduced characters but increased call latency. Exact Claude tokens/cost were not measured.
 - [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting.
@@ -88,7 +88,7 @@ Not blockers for PR #1; all must be closed (or explicitly waived) before tagging
 2. **Touch, gamepad and small-screen** check of the Crystal Rush HUD and prompts (Device Emulator), plus target-device performance.
 3. **Fresh install**: empty tool caches, plugin install/reload from the marketplace; update the user's installed 0.1 copy and re-test skills from the installed copy.
 4. **Crystal Rush polish**: enable `StreamingEnabled`; art pass so crystals read as amethyst (currently bloom to white).
-5. **Blender**: replace deprecated `Material.use_nodes` (removed in Blender 6.0); rigs/animation/PBR fixtures.
+5. **Blender**: local 5.2.2 static/rig/animation/PBR fixtures and version-aware material nodes passed; manual Studio rig/animation import, SurfaceAppearance assignment/rendering and target-device art review remain open. Local scope: one active clip per rig, no NLA/multiple clips, shader baking or avatar compliance.
 6. **Net observability**: rejections warn once per player per remote; add counters/metrics for persistent abuse.
 7. **Formatting**: StyLua-format `tests/headless.luau` and format-check it in CI.
 8. **Import fidelity** for large/UI/rig/terrain places; broader benchmark with exact token accounting.
@@ -99,7 +99,7 @@ Not blockers for PR #1; all must be closed (or explicitly waived) before tagging
 1. Dedicated multi-client, provider-failure and target-device acceptance, plus full plugin install/reload verification.
 2. Native Creator Store quarantine/review integration; the advisory file import scan is not a full asset quarantine or proof of safety.
 3. Versioned migrations and durable developer-product receipt handling require separate design and provider tests; generic in-game Economy helpers must not replace receipt processing.
-4. Animation/PBR/Roblox mesh import round-trips, rendered art review and broader measured workflow benchmarks.
+4. Blender asset Roblox mesh/rig/animation import round-trips and rendered SurfaceAppearance art review; local native Blender fixtures passed. Broader measured workflow benchmarks remain open.
 
 ## Review ownership
 

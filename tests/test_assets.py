@@ -70,4 +70,46 @@ class AssetTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.check(cfg)
 
 
+    def test_pbr_and_rig_manifest_budgets(self):
+        cfg = self.fixture()
+        cfg["assets"][0]["pbr"] = True
+        rig = cfg["assets"][1]
+        rig.update(kind="rig", maxBones=8, maxInfluences=4, animation=True)
+        self.assertTrue(self.check(cfg)["assets"][0]["pbr"])
+        for key, values in (("maxBones", (0, 129, True, 2.5)), ("maxInfluences", (0, 5, True, 2.5))):
+            for value in values:
+                invalid = json.loads(json.dumps(cfg)); invalid["assets"][1][key] = value
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, key): self.check(invalid)
+        for change in ({"pbr": "true"}, {"pbr": True, "maxTextureSize": 2048}, {"maxBones": 3}, {"animation": True}):
+            invalid = self.fixture(); invalid["assets"][0].update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError): self.check(invalid)
+
+    def test_texture_map_dimensions_and_colorspaces(self):
+        for role, colorspace in assets.PBR_MAPS.items():
+            assets.validate_texture(role, [1024, 512], colorspace, 1024)
+            for size in ([30, 16], [0, 16], [2048, 16], [True, 16]):
+                with self.subTest(role=role, size=size), self.assertRaises(ValueError):
+                    assets.validate_texture(role, size, colorspace, 1024)
+            with self.subTest(role=role), self.assertRaisesRegex(ValueError, "colorspace"):
+                assets.validate_texture(role, [16, 16], "sRGB" if colorspace == "Non-Color" else "Non-Color", 1024)
+        with self.assertRaisesRegex(ValueError, "limit 1024"):
+            assets.validate_texture("ColorMap", [2048, 16], "sRGB", 4096)
+        with self.assertRaisesRegex(ValueError, "limit 8"):
+            assets.validate_texture("NormalMap", [16, 16], "Non-Color", 8)
+
+    def test_skin_budgets_count_positive_deform_weights(self):
+        self.assertEqual(assets.validate_skin_budget(3, [[1, 0], [.5, .5], [.25] * 4]), 4)
+        with self.assertRaisesRegex(ValueError, "influence budget exceeded at vertex 1: 5, limit 4"):
+            assets.validate_skin_budget(5, [[1], [.2] * 5])
+        with self.assertRaisesRegex(ValueError, "influence budget"):
+            assets.validate_skin_budget(3, [[.5, .5]], max_influences=1)
+        with self.assertRaisesRegex(ValueError, "unweighted"):
+            assets.validate_skin_budget(3, [[0, 0]])
+        with self.assertRaisesRegex(ValueError, "bone budget"):
+            assets.validate_skin_budget(3, [], max_bones=2)
+        for weight in (-1, float("nan"), float("inf")):
+            with self.subTest(weight=weight), self.assertRaisesRegex(ValueError, "invalid skin weight"):
+                assets.validate_skin_budget(3, [[weight]])
+
+
 if __name__ == "__main__": unittest.main()

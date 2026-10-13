@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -11,6 +12,36 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+PBR_MAPS = {"ColorMap": "sRGB", "NormalMap": "Non-Color", "RoughnessMap": "Non-Color", "MetalnessMap": "Non-Color"}
+
+
+def validate_texture(role: str, size, colorspace: str, budget: int):
+    """Validate image metadata without Blender; PBR maps use a local 1024px ceiling."""
+    if len(size) != 2 or any(type(n) != int or n < 1 or n & (n - 1) for n in size):
+        raise ValueError(f"texture must have power-of-two dimensions: {role} ({size})")
+    limit = min(budget, 1024) if role in PBR_MAPS else budget
+    if max(size) > limit:
+        raise ValueError(f"texture budget exceeded: {role} ({size}, limit {limit}px)")
+    if role in PBR_MAPS and colorspace != PBR_MAPS[role]:
+        raise ValueError(f"{role} colorspace must be {PBR_MAPS[role]}, got {colorspace}")
+
+
+def validate_skin_budget(bone_count: int, influences, max_bones: int = 128, max_influences: int = 4):
+    """Count positive deform-bone weights only; reject invalid weights before FBX export."""
+    if not 1 <= bone_count <= max_bones:
+        raise ValueError(f"bone budget exceeded or empty armature: {bone_count}, limit {max_bones}")
+    maximum = 0
+    for index, weights in enumerate(influences):
+        weights = list(weights)
+        if any(not math.isfinite(w) or w < 0 for w in weights):
+            raise ValueError(f"invalid skin weight at vertex {index}")
+        count = sum(w > 0 for w in weights)
+        if count == 0:
+            raise ValueError(f"skinned mesh has unweighted vertex {index}")
+        if count > min(max_influences, 4):
+            raise ValueError(f"influence budget exceeded at vertex {index}: {count}, limit {min(max_influences, 4)}")
+        maximum = max(maximum, count)
+    return maximum
 
 
 def material_node_tree(material, blender_version: tuple[int, ...], *, enable: bool = False):
@@ -54,6 +85,12 @@ def validate(path: Path) -> dict:
             if type(value) != int or not 1 <= value <= limit: raise ValueError(f"asset.{key} must be 1..{limit}")
         if type(asset.get("animation", False)) != bool: raise ValueError("asset.animation must be boolean")
         if asset.get("animation") and asset["kind"] != "rig": raise ValueError("animation requires a rig")
+        if type(asset.get("pbr", False)) != bool: raise ValueError("asset.pbr must be boolean")
+        if asset.get("pbr") and asset["maxTextureSize"] > 1024: raise ValueError("PBR maxTextureSize must be <=1024")
+        for key, default, limit in (("maxBones", 128, 128), ("maxInfluences", 4, 4)):
+            value = asset.get(key, default)
+            if type(value) != int or not 1 <= value <= limit: raise ValueError(f"asset.{key} must be 1..{limit}")
+            if key in asset and asset["kind"] != "rig": raise ValueError(f"asset.{key} requires a rig")
     return cfg
 
 
@@ -84,7 +121,11 @@ def export(manifest: Path, output: Path, blender: str):
         if hashlib.sha256(source.read_bytes()).hexdigest() != digest: raise RuntimeError("source changed during export; refusing promotion")
         report.update(sourceSha256=digest, manifestSha256=hashlib.sha256(manifest.read_bytes()).hexdigest())
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
-        shutil.copyfile(manifest, stage / "art.json")
+        # The exported art manifest preserves authoring settings and adds native-tool evidence.
+        for asset, evidence in zip(cfg["assets"], report["assets"]):
+            if asset["id"] != evidence["id"]: raise RuntimeError("export report asset order mismatch")
+            asset["export"] = evidence
+        (stage / "art.json").write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8", newline="\n")
         # Move every output together after successful native-tool validation.
         if output.exists(): raise ValueError("output appeared during export; refusing overwrite")
         os.rename(stage, output)
