@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased (V1 development)
+- Use automatic Blender material node trees on 5+ without accessing the deprecated `use_nodes` toggle; preserve legacy behavior before 5.0.
 - Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.
 - Add bounded Net rejection counters with isolated snapshots, active-player cleanup and per-remote summaries limited to once per minute.
 - Fix false-success checking, failed/stale sourcemaps, partial type downloads and formatter failure handling; include dynamic MCPKit in checking/linting.
