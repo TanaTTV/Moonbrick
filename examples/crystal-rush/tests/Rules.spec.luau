@@ -1,0 +1,12 @@
+return function(t: any)
+	local Rules = t.require(game:GetService("ServerScriptService").Server.Rules)
+	t.test("valid pickup requires active round, loaded data, living player and server distance", function()
+		t.eq(Rules.canCollect("Playing", true, true, 10, false), true)
+		t.eq(Rules.canCollect("Waiting", true, true, 1, false), false)
+		t.eq(Rules.canCollect("Playing", false, true, 1, false), false)
+		t.eq(Rules.canCollect("Playing", true, false, 1, false), false)
+		t.eq(Rules.canCollect("Playing", true, true, 10.1, false), false)
+		t.eq(Rules.canCollect("Playing", true, true, 0 / 0, false), false)
+		t.eq(Rules.canCollect("Playing", true, true, 1, true), false)
+	end)
+end

@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-13",
+  "fixtureInstances": 154,
+  "setupCodeCharacters": 20475,
+  "samples": [
+    {
+      "sample": 1,
+      "standardMs": 38,
+      "compactMs": 84,
+      "standardOutputCharacters": 22883,
+      "compactOutputCharacters": 2480
+    },
+    {
+      "sample": 2,
+      "standardMs": 30,
+      "compactMs": 66,
+      "standardOutputCharacters": 22883,
+      "compactOutputCharacters": 2480
+    },
+    {
+      "sample": 3,
+      "standardMs": 34,
+      "compactMs": 81,
+      "standardOutputCharacters": 22883,
+      "compactOutputCharacters": 2480
+    },
+    {
+      "sample": 4,
+      "standardMs": 35,
+      "compactMs": 65,
+      "standardOutputCharacters": 22883,
+      "compactOutputCharacters": 2480
+    },
+    {
+      "sample": 5,
+      "standardMs": 33,
+      "compactMs": 84,
+      "standardOutputCharacters": 22883,
+      "compactOutputCharacters": 2480
+    }
+  ]
+}

@@ -5,10 +5,10 @@ description: Fast, token-efficient way to work with Roblox Studio through the St
 
 # Working with Roblox Studio fast
 
-Measured: the MCP adds ~60 ms per call (a Studio-side floor). Your own turn costs seconds. So speed = **fewer calls, shorter code, shorter output**. Concurrent calls run in parallel — except in the **Client** datamodel, which runs MCP calls one at a time.
+Optimize **fewer calls, shorter code and bounded output**. `docs/BENCHMARKS.md` records a controlled tree benchmark: output shrank, but the compact call was slower. Do not infer universal latency or token-cost savings. Concurrent calls can run in parallel except in the Client datamodel; serialize dependent operations.
 
 ## Session start (2 calls max)
-1. `list_roblox_studios` once; reuse the `studio_id`. Skip `get_studio_state` unless you need play mode.
+1. `list_roblox_studios` once and `get_studio_state` before choosing Edit/Server/Client; reuse the ID and refresh state after a mode mismatch. Never stop another active playtest without authorization.
 2. Start every kit call with the require line for the datamodel — no pre-check call:
    - Edit / Server: `local K=_G.K or require(game.ServerStorage.MCPKit)`
    - Client (playtest): `local K=_G.K or require(game.ReplicatedStorage:WaitForChild("MCPKit"))`
@@ -26,11 +26,11 @@ In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. O
 | `K.test(filter?)` | runs `ServerStorage.Tests` specs → `N passed, M failed` + failures |
 | `K.hook(feature, action, ...)` | calls a Studio-only debug hook (Server datamodel) |
 | `K.mark()` → `K.logs(filter?)` | warnings/errors since the mark, or `clean` |
-| `K.record(name, fn(t), {every?, timeout?})` → `K.results(name, wait?)` | background sampler; `fn` returns a row, nil, or `"stop"` |
+| `K.record(name, fn(t), {every?, timeout?, maxRows?})` → `K.results(name, wait?)` | bounded sampler (600 rows, 500 chars/row by default); `K.cancel(name)` stops it; replacing a name cancels its predecessor |
 | `K.screen(path)` | screen `x,y` of a part for `user_mouse_input` (Client) |
 | `K.perf(top?)` | instance/part counts, heaviest classes, Studio memory |
 | `K.audit()` | deprecated APIs, unvalidated remotes, console-unfriendly input, leftovers |
-| `K.toModelJson(path)` | Rojo `.model.json` of a Studio-built object |
+| `K.toModelJson(path)` | basic primitives/lights/values only; complex meshes/UI/rigs/effects/references require native Rojo syncback or `.rbxm` |
 
 ## Rules
 - **moonbrick project? Code goes through files, never MCP.** Edit `src/**/*.luau` with Read/Edit/Grep, then `bash tools/check.sh`. MCP is for world-building, inspection, tests and playtests. Rojo overwrites MCP edits to synced scripts.
@@ -39,7 +39,7 @@ In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. O
 - **Return only what you need.** Prefer `K.tree`/`K.props` over `inspect_instance` (every property) and `search_game_tree` (always pass `path`; without it you get ~20 KB of services).
 - **Avoid slow tools unless required:** `subagent` (another LLM), `screen_capture` (image tokens; use for visual/design review, not for logic checks), `generate_*` (async jobs).
 - **Heavy builds:** create in a container outside the DataModel, parent per chunk, `task.wait()` per chunk (~1000 items).
-- **World objects you build via MCP must end up in files:** `K.toModelJson(path)` → write `src/world/<Name>.model.json` → once Rojo syncs the copy, delete the original. Unsaved places lose MCP-built objects.
+- **World objects must end up in files:** basic objects via `K.toModelJson`, complex objects via native Rojo syncback/`.rbxm`. Validate property, attribute and reference fidelity in the rebuilt/synced copy before deleting any Studio original; obtain approval for destructive changes.
 - **API docs:** `http_get` with `query` on `create.roblox.com/docs/reference/engine/classes/<Class>.md`.
 
 ## Playtest recipe (~5 calls)
@@ -59,4 +59,4 @@ Hooks bypass input, so UI that only reacts to its own clicks goes stale unnotice
 - **Rojo templates** map Workspace/Lighting properties; never let a project file overwrite Studio's world.
 - **Particle flipbooks:** set `FlipbookLayout` *before* `FlipbookMode` (setting properties from a dictionary loop can do it in the wrong order); otherwise the emitter silently loops frame 1 at 1 fps.
 - **Looks need images, not part shapes.** Stylized effects (eyes, anime fire, smoke) come from textures on BillboardGuis/ParticleEmitters. Draw them with Python (PIL/numpy), serve the folder on `http://localhost:<port>`, and `upload_image` them **one or two per call** (bigger batches time out). Uploads land in the user's account — ask first. Review with `screen_capture` (works in play mode too); freeze particles mid-effect with `ParticleEmitter.TimeScale = 0` for stills.
-- **Unpublished places / no API access:** DataStore calls fail in Studio; `Kit.PlayerData` falls back to memory with a warning.
+- **Studio data isolation:** PlayerData uses memory by default, regardless of API access. Explicit `studioStore = "live"` requires a separate test experience; real provider failures remain failures, never a mid-session memory fallback.

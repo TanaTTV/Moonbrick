@@ -3,18 +3,12 @@
 # Rokit (if missing) -> rojo, luau-lsp, selene, StyLua from rokit.toml -> Rojo Studio plugin -> Roblox type definitions.
 set -euo pipefail
 export PATH="$HOME/.rokit/bin:$PATH"
+kit="$(cd "$(dirname "$0")/.." && pwd)"
+source "$kit/scripts/python.sh"
 
 if ! command -v rokit >/dev/null 2>&1; then
 	echo "Installing Rokit (Roblox toolchain manager)..."
-	case "$(uname -s)" in
-	MINGW* | MSYS* | CYGWIN*)
-		powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-			"Invoke-RestMethod https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.ps1 | Invoke-Expression"
-		;;
-	*)
-		curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
-		;;
-	esac
+	moonbrick_python "$kit/scripts/fetch-rokit.py"
 	command -v rokit >/dev/null 2>&1 || { echo "error: Rokit install failed; see https://github.com/rojo-rbx/rokit"; exit 1; }
 fi
 
@@ -27,6 +21,10 @@ echo "Tools: $(rojo --version), luau-lsp $(luau-lsp --version), $(selene --versi
 
 rojo plugin install >/dev/null && echo "Rojo Studio plugin installed (restart Studio if it was open)."
 
-curl -fsSL -o globalTypes.d.luau \
-	https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.PluginSecurity.d.luau \
-	&& echo "Roblox type definitions downloaded."
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+curl -fsSL --connect-timeout 10 --max-time 60 -o "$tmp" \
+	https://luau-lsp.pages.dev/type-definitions/globalTypes.PluginSecurity.d.luau
+[ -s "$tmp" ] || { echo 'error: empty Roblox definitions download' >&2; exit 1; }
+mv "$tmp" globalTypes.d.luau
+echo 'Roblox type definitions downloaded.'

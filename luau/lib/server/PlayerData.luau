@@ -4,7 +4,7 @@
 --    can't duplicate items or roll progress back.
 --  * Retries with backoff, autosave, save on leave and on server shutdown.
 --  * Template reconcile: fields you add to the template later appear in old saves.
---  * Studio without API access falls back to an in-memory store (one warning) so playtests still run.
+--  * Studio uses memory by default. Real DataStore access requires studioStore = "live" in a test place.
 --
 --   PlayerData.start({ template = { Coins = 0, Inventory = {} }, leaderstats = { "Coins" } })
 --   local data = PlayerData.wait(player)          -- table, or nil if the player left / load failed
@@ -18,7 +18,7 @@ local RunService = game:GetService("RunService")
 local PlayerData = {}
 
 export type Store = {
-	UpdateAsync: (self: any, key: string, transform: (any) -> any) -> any,
+	UpdateAsync: (self: any, key: string, transform: (any, any?) -> ...any) -> any,
 }
 
 export type Config = {
@@ -27,24 +27,69 @@ export type Config = {
 	leaderstats: { string }?, -- template keys to show on the leaderboard
 	autosave: number?, -- seconds between autosaves (default 60)
 	store: Store?, -- override the DataStore (tests use PlayerData.memoryStore())
+	studioStore: ("memory" | "live")?, -- default memory; never point Studio at production stores
 	onLoadFailed: ((Player, string) -> ())?, -- default: kick with a friendly message
+	onSessionLost: ((Player, string) -> ())?, -- default: kick rather than allow unsaved play
 }
 
 local JOB_ID = if game.JobId ~= "" then game.JobId else "studio-" .. HttpService:GenerateGUID(false)
 local LOCK_TIMEOUT = 600 -- a lock not refreshed for this long belongs to a dead server
 local IN_STUDIO = RunService:IsStudio()
 
-local function deepCopy<T>(value: T): T
+local function deepCopy<T>(value: T, seen: { [any]: any }?): T
 	if type(value) ~= "table" then
 		return value
 	end
+	local visited = seen or {}
+	if visited[value] then
+		return visited[value]
+	end
 	local copy = {}
+	visited[value] = copy
 	for k, v in value :: any do
-		copy[deepCopy(k)] = deepCopy(v)
+		copy[deepCopy(k, visited)] = deepCopy(v, visited)
 	end
 	return copy :: any
 end
 PlayerData.deepCopy = deepCopy
+
+-- Reject values DataStore serialization could drop, corrupt, or fail to encode.
+local function validate(value: any, ancestors: { [any]: boolean }?, depth: number?)
+	local kind = type(value)
+	if kind == "number" then
+		assert(value == value and math.abs(value) < math.huge, "data contains a non-finite number")
+	elseif kind == "string" then
+		assert(utf8.len(value) ~= nil, "data contains invalid UTF-8")
+	elseif kind == "table" then
+		local stack = ancestors or {}
+		local level = depth or 0
+		assert(level < 64, "data nesting exceeds 64 levels")
+		assert(not stack[value], "data contains a cycle")
+		assert(getmetatable(value) == nil, "data contains a metatable")
+		stack[value] = true
+		local strings, numbers, largest = 0, 0, 0
+		for key, item in value do
+			if type(key) == "string" then
+				strings += 1
+				validate(key)
+			else
+				assert(
+					type(key) == "number" and key >= 1 and key < math.huge and key % 1 == 0,
+					"data has an invalid table key"
+				)
+				numbers += 1
+				largest = math.max(largest, key)
+			end
+			validate(item, stack, level + 1)
+		end
+		assert(strings == 0 or numbers == 0, "data has mixed array/dictionary keys")
+		assert(numbers == 0 or largest == numbers, "data has a sparse array")
+		stack[value] = nil
+	else
+		assert(kind == "boolean", "data contains unsupported value type: " .. kind)
+	end
+end
+PlayerData.validate = validate
 
 -- Fill keys missing from `data` with copies of the template's values (recursively for dictionaries).
 local function reconcile(data: { [any]: any }, template: { [any]: any }): { [any]: any }
@@ -62,7 +107,7 @@ PlayerData.reconcile = reconcile
 -- In-memory store with DataStore-like copy semantics. Used for tests and Studio without API access.
 function PlayerData.memoryStore(): Store & { values: { [string]: any } }
 	local store = { values = {} }
-	function store.UpdateAsync(self: any, key: string, transform: (any) -> any): any
+	function store.UpdateAsync(self: any, key: string, transform: (any, any?) -> ...any): any
 		local new = transform(deepCopy(self.values[key]))
 		if new ~= nil then
 			self.values[key] = deepCopy(new)
@@ -89,6 +134,9 @@ export type Session = typeof(setmetatable(
 		retries: number,
 		retryDelay: number,
 		ignoreLocks: boolean,
+		token: string,
+		busy: boolean,
+		closing: boolean,
 	},
 	Session
 ))
@@ -100,6 +148,9 @@ function Session.new(
 	opts: { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean? }?
 ): Session
 	local o: { jobId: string?, retries: number?, retryDelay: number?, ignoreLocks: boolean? } = opts or {}
+	validate(template)
+	assert(o.retries == nil or (o.retries >= 1 and o.retries <= 10 and o.retries % 1 == 0), "retries must be 1..10")
+	assert(o.retryDelay == nil or (o.retryDelay >= 0 and o.retryDelay <= 10), "retryDelay must be 0..10")
 	return setmetatable({
 		store = store,
 		key = key,
@@ -110,37 +161,68 @@ function Session.new(
 		jobId = o.jobId or JOB_ID,
 		retries = o.retries or 5,
 		retryDelay = o.retryDelay or 2,
-		ignoreLocks = if o.ignoreLocks ~= nil then o.ignoreLocks else IN_STUDIO,
+		ignoreLocks = false, -- retained for compatibility; ownership checks cannot be disabled
+		token = HttpService:GenerateGUID(false),
+		busy = false,
+		closing = false,
 	}, Session)
+end
+
+local function lockFor(self: Session)
+	return { job = self.jobId, token = self.token, time = os.time() }
+end
+
+local function owns(self: Session, lock: any): boolean
+	return type(lock) == "table" and lock.job == self.jobId and lock.token == self.token
+end
+
+-- Hold this gate across yielding DataStore calls and retries, so an autosave cannot race release.
+local function acquire(self: Session)
+	while self.busy do
+		task.wait()
+	end
+	self.busy = true
 end
 
 -- Load and lock. Returns false + reason if the data is locked by a live server or the store keeps failing.
 function Session.load(self: Session): (boolean, string?)
+	acquire(self)
+	if self.loaded or self.released or self.closing then
+		self.busy = false
+		return false, "session already loaded or closed"
+	end
 	local lastError = "unknown error"
 	for attempt = 1, self.retries do
 		local result, lockedBy = nil, nil
 		local ok, err = pcall(function()
-			self.store:UpdateAsync(self.key, function(stored)
+			local committed = self.store:UpdateAsync(self.key, function(stored, info)
 				result, lockedBy = nil, nil
-				stored = stored or {}
+				if stored == nil then
+					stored = {}
+				end
+				assert(type(stored) == "table", "invalid stored record; refusing to replace it")
+				assert(
+					stored.data == nil or type(stored.data) == "table",
+					"invalid stored data; refusing to replace it"
+				)
 				local lock = stored.lock
-				if
-					lock
-					and lock.job ~= self.jobId
-					and os.time() - (lock.time or 0) < LOCK_TIMEOUT
-					and not self.ignoreLocks
-				then
+				if lock and not owns(self, lock) and os.time() - (lock.time or 0) < LOCK_TIMEOUT then
 					lockedBy = lock.job
 					return nil -- don't write; another live server owns this data
 				end
 				stored.data = reconcile(stored.data or deepCopy(self.template), self.template)
-				stored.lock = { job = self.jobId, time = os.time() }
-				result = stored.data
+				validate(stored.data)
+				stored.lock = lockFor(self)
+				if info then
+					return stored, info:GetUserIds(), info:GetMetadata()
+				end
 				return stored
 			end)
+			result = if committed and owns(self, committed.lock) then deepCopy(committed.data) else nil
 		end)
 		if ok and result then
 			self.data, self.loaded = result, true
+			self.busy = false
 			return true
 		end
 		lastError = if not ok then tostring(err) else `locked by another server ({lockedBy})`
@@ -148,46 +230,70 @@ function Session.load(self: Session): (boolean, string?)
 			task.wait(self.retryDelay * attempt)
 		end
 	end
+	self.busy = false
 	return false, lastError
 end
 
 -- Write the data (refreshing the lock), or release the lock with `release = true`.
 -- Returns false if another server has taken the lock (this session then stops saving).
 function Session.save(self: Session, release: boolean?): (boolean, string?)
+	if release then
+		self.closing = true -- reject queued autosaves as soon as the final save is requested
+	elseif self.closing then
+		return false, "session closing"
+	end
+	acquire(self)
 	if not self.loaded or self.released then
+		self.busy = false
 		return false, "session not active"
 	end
-	local data = self.data
+	if self.closing and not release then
+		self.busy = false
+		return false, "session closing"
+	end
+	local copied, data = pcall(function()
+		validate(self.data)
+		return deepCopy(self.data)
+	end)
+	if not copied then
+		self.busy = false
+		return false, tostring(data)
+	end
 	local lastError = "unknown error"
 	for attempt = 1, math.min(self.retries, 3) do
 		local lost = false
 		local ok, err = pcall(function()
-			self.store:UpdateAsync(self.key, function(stored)
+			self.store:UpdateAsync(self.key, function(stored, info)
 				lost = false
-				stored = stored or {}
-				if stored.lock and stored.lock.job ~= self.jobId and not self.ignoreLocks then
+				if not stored or not owns(self, stored.lock) then
 					lost = true
 					return nil
 				end
-				stored.data = data
-				stored.lock = if release then nil else { job = self.jobId, time = os.time() }
+				stored.data = deepCopy(data) -- stable snapshot on every UpdateAsync callback invocation
+				stored.lock = if release then nil else lockFor(self)
+				if info then
+					return stored, info:GetUserIds(), info:GetMetadata()
+				end
 				return stored
 			end)
 		end)
 		if ok and lost then
 			self.released = true
+			self.busy = false
 			return false, "lock taken by another server; not overwriting"
 		elseif ok then
 			if release then
 				self.released = true
 			end
+			self.busy = false
 			return true
 		end
 		lastError = tostring(err)
-		if attempt < 3 then
+		if attempt < math.min(self.retries, 3) then
 			task.wait(self.retryDelay * attempt)
 		end
 	end
+	self.busy = false
 	return false, lastError
 end
 
@@ -197,48 +303,16 @@ local config: Config? = nil
 local store: Store? = nil
 local sessions: { [Player]: Session } = {}
 local failed: { [Player]: boolean } = {}
+local closing = false
+local activeOperations = 0
 local loadedEvent = Instance.new("BindableEvent")
 
 -- Fires (player, data) when a player's data has loaded.
 PlayerData.loaded = loadedEvent.Event
 
-local function isApiAccessError(err: string): boolean
-	local e = err:lower()
-	return e:find("studio access to api", 1, true) ~= nil
-		or e:find("403", 1, true) ~= nil
-		or e:find("api services", 1, true) ~= nil
-		or e:find("not allowed", 1, true) ~= nil
-end
-
--- DataStore wrapper that switches to memory (with a warning) when Studio has no API access.
+-- Never switch an acquired persistent session to memory after a transient provider failure.
 local function dataStore(name: string): Store
-	local fallback: Store? = nil
-	local gotStore, real = pcall(DataStoreService.GetDataStore, DataStoreService, name)
-	if not gotStore then
-		if not IN_STUDIO then
-			error(real, 0)
-		end
-		warn(`PlayerData: DataStores unavailable in Studio ({real}); using an in-memory store (data resets each playtest).`)
-		return PlayerData.memoryStore()
-	end
-	local wrapper = {}
-	function wrapper.UpdateAsync(_: any, key: string, transform: (any) -> any): any
-		if fallback then
-			return fallback:UpdateAsync(key, transform)
-		end
-		local ok, result = pcall(real.UpdateAsync, real, key, transform)
-		if ok then
-			return result
-		end
-		if IN_STUDIO and isApiAccessError(tostring(result)) then
-			warn("PlayerData: Studio has no DataStore access, using an in-memory store (data resets each playtest). Enable 'Studio Access to API Services' in Game Settings > Security to test real saves.")
-			local mem = PlayerData.memoryStore()
-			fallback = mem
-			return mem:UpdateAsync(key, transform)
-		end
-		error(result, 0)
-	end
-	return wrapper :: any
+	return DataStoreService:GetDataStore(name) :: any
 end
 
 local function statValue(value: any): ValueBase?
@@ -278,16 +352,36 @@ local function buildLeaderstats(player: Player, data: { [string]: any })
 	folder.Parent = player
 end
 
+local function onLeave(player: Player)
+	local session = sessions[player]
+	failed[player] = nil
+	if session and session.loaded then
+		session.closing = true
+		local ok, err = session:save(true)
+		if not ok then
+			warn(`PlayerData: final save for {player.Name} failed: {err}`)
+		end
+	end
+	-- Keep in-flight loads/saves visible to shutdown until they finish.
+	if session and session.loaded and session.released then
+		sessions[player] = nil
+	end
+end
+
 local function onJoin(player: Player)
+	if closing or sessions[player] then
+		return
+	end
 	local cfg = config :: Config
 	local session = Session.new(store :: Store, "Player_" .. player.UserId, cfg.template)
 	sessions[player] = session
 	local ok, err = session:load()
-	if player.Parent ~= Players then -- left while loading
+	if closing or player.Parent ~= Players then -- left or shutdown began while loading
 		if ok then
-			session:save(true)
+			onLeave(player) -- retain failed releases for autosave/shutdown retry
+		else
+			sessions[player] = nil
 		end
-		sessions[player] = nil
 		return
 	end
 	if not ok then
@@ -297,7 +391,9 @@ local function onJoin(player: Player)
 		if cfg.onLoadFailed then
 			cfg.onLoadFailed(player, err or "unknown")
 		else
-			player:Kick("Your data couldn't be loaded right now (it may still be saving from another server). Please rejoin in a minute.")
+			player:Kick(
+				"Your data couldn't be loaded right now (it may still be saving from another server). Please rejoin in a minute."
+			)
 		end
 		return
 	end
@@ -305,39 +401,83 @@ local function onJoin(player: Player)
 	loadedEvent:Fire(player, session.data)
 end
 
-local function onLeave(player: Player)
-	local session = sessions[player]
+local function tracked(fn: (Player) -> (), player: Player)
+	activeOperations += 1
+	local ok, err = pcall(function()
+		fn(player)
+		return true
+	end)
+	activeOperations -= 1
+	if not ok then
+		warn(`PlayerData: lifecycle operation for {player.Name} failed: {err}`)
+	end
+end
+
+local function sessionLost(player: Player, session: Session, reason: string)
+	if sessions[player] ~= session or session.closing or not session.released then
+		return
+	end
 	sessions[player] = nil
-	failed[player] = nil
-	if session and session.loaded then
-		local ok, err = session:save(true)
-		if not ok then
-			warn(`PlayerData: final save for {player.Name} failed: {err}`)
-		end
+	failed[player] = true
+	if player.Parent ~= Players then
+		return
+	end
+	local callback = config and config.onSessionLost
+	if callback then
+		callback(player, reason)
+	else
+		player:Kick("Your data session ended. Please rejoin to keep your progress safe.")
 	end
 end
 
 function PlayerData.start(cfg: Config)
 	assert(RunService:IsServer(), "PlayerData runs on the server")
 	assert(config == nil, "PlayerData.start called twice")
+	assert(
+		cfg.autosave == nil or (cfg.autosave >= 10 and cfg.autosave < LOCK_TIMEOUT / 2),
+		"autosave must be 10..299 seconds"
+	)
+	local selectedStore = cfg.store
+	if not selectedStore then
+		if IN_STUDIO and cfg.studioStore ~= "live" then
+			warn(
+				"PlayerData: Studio uses memory; data resets each playtest. Use studioStore = 'live' only in a separate test experience."
+			)
+			selectedStore = PlayerData.memoryStore()
+		else
+			selectedStore = dataStore(cfg.name or "PlayerData")
+		end
+	end
 	config = cfg
-	store = cfg.store or dataStore(cfg.name or "PlayerData")
+	store = selectedStore
 
-	Players.PlayerAdded:Connect(onJoin)
-	Players.PlayerRemoving:Connect(onLeave)
+	Players.PlayerAdded:Connect(function(player)
+		tracked(onJoin, player)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		tracked(onLeave, player)
+	end)
 	for _, player in Players:GetPlayers() do
-		task.spawn(onJoin, player)
+		task.spawn(tracked, onJoin, player)
 	end
 
 	task.spawn(function()
-		while true do
+		while not closing do
 			task.wait(cfg.autosave or 60)
+			if closing then
+				break
+			end
 			for player, session in sessions do
 				if session.loaded and not session.released then
+					if session.closing then
+						task.spawn(tracked, onLeave, player) -- retry a failed leave save; still visible to shutdown
+						continue
+					end
 					task.spawn(function()
 						local ok, err = session:save(false)
 						if not ok then
 							warn(`PlayerData: autosave for {player.Name} failed: {err}`)
+							sessionLost(player, session, err or "session ownership lost")
 						end
 					end)
 				end
@@ -346,17 +486,45 @@ function PlayerData.start(cfg: Config)
 	end)
 
 	game:BindToClose(function()
+		closing = true
 		local pending = 0
-		for player in sessions do
-			pending += 1
-			task.spawn(function()
-				onLeave(player)
-				pending -= 1
-			end)
-		end
+		local attempts: { [Session]: number } = {}
 		local deadline = os.clock() + 25
-		while pending > 0 and os.clock() < deadline do
+		local unsaved = false
+		repeat
+			unsaved = false
+			local waiting = false
+			for player, session in sessions do
+				if session.loaded and not session.released then
+					unsaved = true
+					if session.busy then
+						waiting = true
+					elseif (attempts[session] or 0) < 2 then
+						attempts[session] = (attempts[session] or 0) + 1
+						pending += 1
+						task.spawn(function()
+							tracked(onLeave, player)
+							pending -= 1
+						end)
+					end
+				end
+			end
+			if pending == 0 and activeOperations == 0 and not waiting then
+				break
+			end
 			task.wait(0.1)
+		until os.clock() >= deadline
+		if unsaved or pending > 0 or activeOperations > 0 then
+			-- Recompute because a synchronous successful release can remove the last retained session.
+			local retained = false
+			for _, session in sessions do
+				if session.loaded and not session.released then
+					retained = true
+				end
+			end
+			if retained or pending > 0 or activeOperations > 0 then
+				warn("PlayerData: shutdown ended with unsaved data operations after bounded retries")
+			end
 		end
 	end)
 end
@@ -364,7 +532,7 @@ end
 -- The player's data table, or nil if not loaded (yet). Mutate it directly, or use set/increment/update.
 function PlayerData.get(player: Player): { [string]: any }?
 	local session = sessions[player]
-	return if session and session.loaded then session.data else nil
+	return if session and session.loaded and not session.released and not session.closing then session.data else nil
 end
 
 -- Wait until the player's data has loaded. Returns nil if they leave or loading fails.
@@ -405,18 +573,43 @@ function PlayerData.increment(player: Player, key: string, delta: number): numbe
 	return new
 end
 
--- Edit the data in a function; leaderstats are refreshed afterwards.
-function PlayerData.update(player: Player, fn: ({ [string]: any }) -> ())
+-- Nonyielding transaction: callback errors, yields and invalid values never partially mutate live data.
+-- Keep external effects (remotes, DataStores) outside the callback. Outer data table identity is preserved.
+function PlayerData.update(player: Player, fn: ({ [string]: any }) -> ()): (boolean, string?)
 	local data = PlayerData.get(player)
 	if not data then
 		warn(`PlayerData.update({player.Name}): data not loaded`)
-		return
+		return false, "data not loaded"
 	end
-	fn(data)
+	local staged = deepCopy(data)
+	local thread = coroutine.create(fn)
+	local ok, err = coroutine.resume(thread, staged)
+	if coroutine.status(thread) ~= "dead" then
+		coroutine.close(thread)
+		warn("PlayerData.update: callback yielded; transaction cancelled")
+		return false, "callback must not yield"
+	end
+	if not ok then
+		warn(`PlayerData.update: transaction cancelled: {err}`)
+		return false, tostring(err)
+	end
+	local valid, reason = pcall(function()
+		validate(staged)
+		return true
+	end)
+	if not valid then
+		warn(`PlayerData.update: invalid data; transaction cancelled: {reason}`)
+		return false, tostring(reason)
+	end
+	table.clear(data)
+	for key, value in staged do
+		data[key] = value
+	end
 	local keys: { string } = (config and config.leaderstats) or {}
 	for _, key in keys do
 		syncLeaderstat(player, key, data[key])
 	end
+	return true
 end
 
 -- Save now (e.g. right after a purchase). Autosave and leave/shutdown saves happen automatically.
@@ -425,7 +618,11 @@ function PlayerData.save(player: Player): boolean
 	if not session then
 		return false
 	end
-	return (session:save(false))
+	local ok, err = session:save(false)
+	if not ok then
+		sessionLost(player, session, err or "session ownership lost")
+	end
+	return ok
 end
 
 return PlayerData
