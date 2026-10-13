@@ -21,7 +21,7 @@ scene.frame_start, scene.frame_end = 1, 25
 
 material = bpy.data.materials.new("Procedural_PBR")
 tree = material_node_tree(material, bpy.app.version, enable=True)
-bsdf = tree.nodes.get("Principled BSDF")
+bsdf = next((n for n in tree.nodes if n.type == "BSDF_PRINCIPLED"), None)  # names are localized
 for role, socket in (("ColorMap", "Base Color"), ("NormalMap", "Normal"), ("RoughnessMap", "Roughness"), ("MetalnessMap", "Metallic")):
     width = 30 if variant == "npot" and role == "NormalMap" else 16
     if variant == "oversize" and role == "RoughnessMap": width = 2048

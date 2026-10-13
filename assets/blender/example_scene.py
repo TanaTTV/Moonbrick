@@ -16,7 +16,7 @@ material = bpy.data.materials.new("Moonbrick_Amethyst")
 material.diffuse_color = (0.37, 0.21, 0.68, 1)
 node_tree = material_node_tree(material, bpy.app.version, enable=True)
 if node_tree is None: raise RuntimeError("material has no shader node tree")
-bsdf = node_tree.nodes.get("Principled BSDF")
+bsdf = next((n for n in node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)  # names are localized
 if bsdf is None: raise RuntimeError("material has no default Principled BSDF")
 bsdf.inputs["Base Color"].default_value = material.diffuse_color
 bsdf.inputs["Roughness"].default_value = 0.7
