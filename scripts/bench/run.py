@@ -191,6 +191,8 @@ def isolation(init, condition):
     commands = init.get('slash_commands', [])
     if not isinstance(plugins, list):
         return False, 'init has no explicit plugin inventory'
+    # Claude Code's own built-in plugins load identically in both conditions; only installed ones matter.
+    plugins = [p for p in plugins if not (isinstance(p, dict) and p.get('path') == 'builtin')]
     names = [p.get('name', '') if isinstance(p, dict) else str(p) for p in plugins]
     moon = [n for n in names if 'moonbrick' in n.lower()]
     leaked = any('moonbrick' in str(s).lower() for s in skills + commands)
