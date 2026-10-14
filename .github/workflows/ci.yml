@@ -67,6 +67,11 @@ jobs:
           rojo build default.project.json -o smoke.rbxlx
       - name: Real Rojo import and server integration
         run: python scripts/test-integration.py
+      - name: Real Rojo import fidelity (large/UI/rig/world, .rbxlx + .rbxl)
+        timeout-minutes: 3
+        run: |
+          export PATH="$HOME/.rokit/bin:$PATH"
+          python scripts/test-import-fidelity.py
       - name: Original checker regression and 0.1 project upgrade
         run: |
           python scripts/prove-checker-fix.py

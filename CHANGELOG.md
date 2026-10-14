@@ -3,6 +3,7 @@
 ## 1.0.0-beta.1 (unreleased; V1 beta candidate)
 - Plugin version 1.0.0-beta.1 so `claude plugin update` refreshes installed 0.1.0 copies (verified by the isolated install test).
 - Harden Net rejection reasons, warning summaries and departed-player tracking; isolate install-runner credentials/tools/config snapshots and validate cleanup PIDs. Clarify example-only Workspace/Lighting configuration.
+- Add real Rojo 7.7.1 synthetic XML/binary import fidelity acceptance for large hierarchies, UI and rigs, with measured timings/file counts, strict loss detection, validated reference/default exceptions, byte-identical input/script/managed files and intact Kit. Document CRLF rebuild normalization, StarterPlayer settings and world ownership; Studio connection/terrain/rendering acceptance remains open.
 - Use automatic Blender material node trees on 5+ without accessing the deprecated `use_nodes` toggle; preserve legacy behavior before 5.0.
 - Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.
 - Add bounded Net rejection counters with isolated snapshots, active-player cleanup and per-remote summaries limited to once per minute.
