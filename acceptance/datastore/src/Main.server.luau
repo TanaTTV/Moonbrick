@@ -30,6 +30,7 @@ local runtime = {
 	requestTypes = {
 		update = Enum.DataStoreRequestType.UpdateAsync,
 		remove = Enum.DataStoreRequestType.SetIncrementAsync,
+		list = Enum.DataStoreRequestType.StandardList,
 	},
 }
 local services = {
@@ -41,7 +42,11 @@ local services = {
 print(
 	`DATASTORE ACCEPTANCE: mode={Config.mode}, place={game.PlaceId}, universe={game.GameId}, store={Safety.storeName}, runId={runId}`
 )
-local store = Safety.open(service, context, Config, runId, runtime)
+local opened, store = pcall(Safety.open, service, context, Config, runId, runtime)
+if not opened then
+	warn("DATASTORE ACCEPTANCE REFUSED: " .. tostring(store) .. "; no DataStore acquired")
+	return
+end
 local harness = Scenarios.new({
 	store = store,
 	playerData = Factory(game, task, Instance),

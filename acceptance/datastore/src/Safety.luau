@@ -17,19 +17,16 @@ function Safety.refusal(context: any, config: any): string?
 		return "place/universe ID pair is absent from Config.allowedPlaces (empty by default)"
 	end
 	if
-		not table.find(
-			{
-				"suite",
-				"shutdown-arm",
-				"shutdown-verify",
-				"stale-arm",
-				"stale-verify",
-				"contender-a",
-				"contender-b",
-				"cleanup",
-			},
-			config.mode
-		)
+		not table.find({
+			"suite",
+			"shutdown-arm",
+			"shutdown-verify",
+			"stale-arm",
+			"stale-verify",
+			"contender-a",
+			"contender-b",
+			"cleanup",
+		}, config.mode)
 	then
 		return "unknown Config.mode"
 	end
@@ -58,11 +55,10 @@ function Safety.open(service: any, context: any, config: any, runId: string, run
 	for _, scenario in Safety.scenarios do
 		permitted[Safety.key(scenario, runId)] = true
 	end
-	local raw = service:GetDataStore(Safety.storeName)
 	local calls, regular, cleanup = 0, 0, 0
 	local touched: { [string]: boolean } = {}
-	local function request(key: string, kind: string, isCleanup: boolean?)
-		assert(permitted[key] == true, "refusing foreign key: " .. tostring(key))
+	local function request(key: string?, kind: string, isCleanup: boolean?)
+		assert(kind == "list" or (key ~= nil and permitted[key] == true), "refusing foreign key: " .. tostring(key))
 		-- 40 regular + 20 reserved cleanup requests; one process/run can never exceed 60.
 		assert(calls < 60, "60-request safety ceiling reached")
 		if isCleanup then
@@ -86,11 +82,31 @@ function Safety.open(service: any, context: any, config: any, runId: string, run
 			regular += 1
 		end
 	end
+	-- One unfiltered page only. An incomplete listing cannot establish disposability.
+	request(nil, "list")
+	local pages = service:ListDataStoresAsync("", 100)
+	for _, entry in pages:GetCurrentPage() do
+		assert(entry.DataStoreName == Safety.storeName, "universe contains another DataStore: " .. entry.DataStoreName)
+	end
+	assert(pages.IsFinished, "DataStore listing exceeds one page; refusing unverifiable universe")
+	local raw = service:GetDataStore(Safety.storeName)
 	local store: any = {}
 	function store:UpdateAsync(key: string, transform: any): any
 		request(key, "update")
 		touched[key] = true -- includes ambiguous failures after a provider commit
-		return raw:UpdateAsync(key, transform)
+		return raw:UpdateAsync(key, function(value: any, info: any)
+			assert(
+				value == nil or (type(value) == "table" and value.__moonbrickAcceptance == runId),
+				"not ours: refusing to overwrite " .. key
+			)
+			-- Preserve the transform's user IDs/metadata returns and nil cancellation semantics.
+			local result = table.pack(transform(value, info))
+			if result[1] ~= nil then
+				assert(type(result[1]) == "table", "acceptance writes must be records")
+				result[1].__moonbrickAcceptance = runId
+			end
+			return table.unpack(result, 1, result.n)
+		end)
 	end
 	function store:read(key: string, isCleanup: boolean?): any
 		request(key, "update", isCleanup)
@@ -102,9 +118,15 @@ function Safety.open(service: any, context: any, config: any, runId: string, run
 		end)
 		return snapshot
 	end
-	function store:remove(key: string)
+	function store:remove(key: string): boolean
+		local value = self:read(key, true)
+		if value == nil then
+			return false -- already verified absent; conserve the cleanup reserve
+		end
+		assert(type(value) == "table" and value.__moonbrickAcceptance == runId, "not ours: refusing to remove " .. key)
 		request(key, "remove", true)
 		raw:RemoveAsync(key)
+		return true
 	end
 	function store:budget(): number
 		return service:GetRequestBudgetForRequestType(runtime.requestTypes.update)

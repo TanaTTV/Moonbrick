@@ -35,7 +35,7 @@ function Scenarios.new(deps: any): any
 	end
 	function harness:summary()
 		runtime.log(`DATASTORE ACCEPTANCE: {self.passed} passed, {self.failed} failed`)
-		runtime.log(`REQUESTS: {store:count()}/60 (includes read-through UpdateAsync and cleanup)`)
+		runtime.log(`REQUESTS: {store:count()}/60 (includes listing, read-through UpdateAsync and cleanup)`)
 	end
 	function harness:cleanup(allKeys: boolean?): string
 		-- Stop autosave loops and release any failed scenario's sessions before removing keys.
@@ -64,8 +64,9 @@ function Scenarios.new(deps: any): any
 		local leftovers, removed = {}, 0
 		for target in targets do
 			local ok, why = pcall(function()
-				store:remove(target)
-				assert(store:read(target, true) == nil, "record still present")
+				if store:remove(target) then
+					assert(store:read(target, true) == nil, "record still present")
+				end
 			end)
 			if ok then
 				removed += 1
@@ -76,7 +77,7 @@ function Scenarios.new(deps: any): any
 		table.sort(leftovers)
 		runtime.log("LEFTOVERS: " .. (if #leftovers == 0 then "none" else table.concat(leftovers, ", ")))
 		assert(#leftovers == 0, "cleanup incomplete; use cleanup mode with run ID " .. deps.runId)
-		return `{removed} keys removed; verified absent via uncached UpdateAsync`
+		return `{removed} keys absent; owned records removed and verified via uncached UpdateAsync`
 	end
 	function harness:roundtrip(): string
 		local first = session("roundtrip")
@@ -272,12 +273,13 @@ function Scenarios.new(deps: any): any
 		end)
 	end
 	local function awaitStage(stage: string)
+		-- Ten polls, spaced by twice the ~6s per-key write cooldown: bounded 120s window.
 		for _ = 1, 10 do
 			local record = store:read(key("coordinator"))
 			if record and record.stage == stage then
 				return
 			end
-			runtime.wait(2)
+			runtime.wait(12)
 		end
 		error("coordinator timeout waiting for " .. stage .. "; stop both servers and cleanup")
 	end
@@ -292,7 +294,7 @@ function Scenarios.new(deps: any): any
 				requireOk(holder:load())
 				holder.data.Coins = 77
 				coordinate("holding")
-				runtime.log("A HOLDING: start B now with same run ID (20-second window)")
+				runtime.log("A HOLDING: start B within 60 seconds with same run ID (120-second polling window)")
 				awaitStage("refused")
 				requireOk(holder:save(true))
 				coordinate("released")
