@@ -277,7 +277,9 @@ def run_one(batch, spec, condition, repetition, model, remaining, dry_run=False)
     out = batch / f'{condition}{repetition}'
     out.mkdir()
     # Deliberately retained for review; credential copy is removed in finally.
-    temp = Path(tempfile.mkdtemp(prefix='moonbrick-bench-', dir=batch))
+    # Outside the plugin dir: Claude Code won't auto-approve edits inside a loaded plugin's tree,
+    # and the run copies credentials into this directory.
+    temp = Path(tempfile.mkdtemp(prefix='moonbrick-bench-'))
     project = temp / 'project'
     project.mkdir()
     env = isolated_env(temp, spec['tools'], copy_credentials=not dry_run)
