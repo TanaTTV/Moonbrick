@@ -13,7 +13,7 @@ python -m unittest discover -s tests
 python scripts/test-luau.py --luau .artifacts/tools/luau/luau.exe
 ```
 
-The headless runner embeds `tests/headless.luau`'s deterministic coroutine scheduler and executes the same `Scenarios` functions over the shipped `PlayerData.memoryStore()`. It adds copy-safe `UpdateAsync`, `RemoveAsync`, and budget/service adapters. No credentials, Roblox connection, Studio or Roblox web API is involved. Test IDs 123/456 are memory-only gate fixtures, never a live allowlist.
+The headless runner embeds `tests/headless.luau`'s deterministic coroutine scheduler and executes the same `Scenarios` functions over the shipped `PlayerData.memoryStore()`. It adds copy-safe `UpdateAsync`, `RemoveAsync`, budget/listing adapters and simulated six-second per-key provider delays. It executes the actual `Main.server.luau` entry script on refused and allowed paths, including every mode, generated run IDs and captured shutdown callbacks. No credentials, Roblox connection, Studio or Roblox web API is involved. Test IDs 123/456 are memory-only gate fixtures, never a live allowlist.
 
 All scripts are strict. Use the pinned Rokit tools from the new folder's manifest (install with `rokit install --no-trust-check` if needed, as in CI). From `acceptance/datastore`:
 
@@ -25,9 +25,11 @@ rojo sourcemap default.project.json -o sourcemap.json
 Invoke-WebRequest https://luau-lsp.pages.dev/type-definitions/globalTypes.PluginSecurity.d.luau -OutFile globalTypes.d.luau
 luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau --formatter=plain src tests
 selene --display-style=quiet src tests
+$files = Get-ChildItem src,tests -Recurse -Filter *.luau | Where-Object Name -ne PlayerDataFactory.luau
+stylua --check --config-path ../../template/stylua.toml $files.FullName
 ```
 
-Require both exits to be zero and no source diagnostics. The analyzer's watched-files-registration warning in CLI mode is tool infrastructure, not a source warning. `globalTypes.d.luau` and `sourcemap.json` are ignored local artifacts. The test spec is checked as well as the project scripts.
+Require all three exits to be zero and no source diagnostics. CI also rejects source diagnostics accompanying an analyzer exit of zero. The analyzer's watched-files-registration warning in CLI mode is tool infrastructure, not a source warning. `globalTypes.d.luau` and `sourcemap.json` are ignored local artifacts. The test spec is checked as well as the project scripts.
 
 `PlayerDataFactory.luau` vendors the unchanged shipped PlayerData body inside a factory with injected lexical `game`, `task`, and `Instance`. Only its redundant inner strict directive is omitted; the outer file is strict. The runner compares the entire generated file to source every run, failing on drift. After reviewing an upstream change, refresh with:
 
@@ -35,16 +37,20 @@ Require both exits to be zero and no source diagnostics. The analyzer's watched-
 python acceptance/datastore/run-headless.py --refresh-factory --luau .artifacts/tools/luau/luau.exe
 ```
 
-Do not format or hand-edit the generated factory, and never fix `luau/lib` from this acceptance work. `default.project.json` maps only this folder's `src`; the built place is self-contained and has no game scripts, remotes, production assets or player data integrations.
+Do not format or hand-edit the generated factory, and never fix `luau/lib` from this acceptance work. Its shipped body is formatted, but StyLua on the whole generated file would re-indent that body inside the injection wrapper and break the byte-for-byte drift check. CI excludes this file from StyLua while still analyzing and linting it. `default.project.json` maps only this folder's `src`; the built place is self-contained and has no game scripts, remotes, production assets or player data integrations.
 
 ## Safety design
 
 - Before acquiring a DataStore, require a Studio **server**, nonzero `game.PlaceId` and `game.GameId`, the exact manually set boolean `ServerScriptService.MoonbrickAcceptanceConfirmed = true`, and an allowlisted **place ID plus universe ID pair**. `Config.allowedPlaces` is empty and the Rojo attribute is false by default. Place titles are not trusted as identity; exact numeric IDs meet the allowlist requirement. Published Roblox game servers and clients are refused too.
+- After those gates and before `GetDataStore`, issue exactly one unfiltered `ListDataStoresAsync("", 100)` request, budgeted against `DataStoreRequestType.StandardList` and counted as one regular request. Accept an empty universe or only `MoonbrickAcceptance_v1`; refuse any other store name, an incomplete first page, a listing error or exhausted listing budget. Never fetch another page. This is an additional guard against using a production universe, not a substitute for verifying the new disposable universe's IDs.
 - The only store name is the fixed `MoonbrickAcceptance_v1`, with default scope. Only `AcceptanceTest_<scenario>_<runId>` keys for `roundtrip`, `contention`, `stale`, `shutdown`, `invalid`, `budget`, `coordinator` can be read, written or removed. Run IDs are 1..12 ASCII alphanumerics, keeping every key below the 50-character limit. No name override or arbitrary cleanup key is accepted.
 - Never start PlayerData against actual Players. Persistence scenarios use its public `Session` API with real `UpdateAsync` behind a guarded store. Lifecycle/recovery scenarios load a fresh factory with fake Players and a captured library `BindToClose` callback. The one fake UserId is the **string** `AcceptanceSynthetic`; its logical internal `Player_AcceptanceSynthetic` is accepted only by a mapper that forwards the fixed acceptance key. No `Player_<UserId>` or `Player_…` key ever reaches a DataStore.
 - PlayerData's exact Studio opt-in is `studioStore = "live"`. The lifecycle adapter passes it explicitly along with the guarded `store`; direct Session tests receive that store explicitly. Both paths exercise the shipped ownership tokens, validation, retries and `UpdateAsync` callbacks. There is no fallback from persistent store failure to memory.
 - Budget is checked before every provider operation. Zero budget waits at most eight seconds then fails without sending a request. Each server process/run has **40 regular requests plus 20 reserved cleanup requests, at most 60 total**, counting attempts, cancelled read-through updates, removals and provider errors. Counters are rechecked after yielding. Provider-internal callback retries are controlled by Roblox and are not separately countable. Two-server mode has a separate ceiling in each process, never an unbounded request loop.
-- Inspection uses `UpdateAsync` with a callback returning nil so Roblox's local `GetAsync` cache cannot hide failed cleanup. Every key attempted for writing is tracked before a potentially ambiguous provider commit. Cleanup first closes lifecycle adapters and releases remaining sessions, then removes only tracked keys and reports exact leftovers. Explicit cleanup mode tries all seven fixed scenario keys for one run ID; it never scans or wipes a store.
+- Every committed value has a top-level `__moonbrickAcceptance = runId` marker, including PlayerData locks/saves, the invalid infinity fixture and coordinator records. The guarded `UpdateAsync` wrapper preserves nil cancellation and user ID/metadata returns; PlayerData preserves unknown top-level fields. Existing values without this exact run marker are refused before transformation, so a manual mode cannot adopt a foreign fixture.
+- Inspection uses `UpdateAsync` with a callback returning nil so Roblox's local `GetAsync` cache cannot hide failed cleanup. Every key attempted for writing is tracked before a potentially ambiguous provider commit. Cleanup first closes lifecycle adapters and releases remaining sessions, then inspects each tracked key's current value before `RemoveAsync`. Missing keys require no removal; values lacking this run's marker are retained and reported as exact **not ours** leftovers. Owned keys are removed and verified absent through another uncached read. Explicit cleanup mode tries all seven fixed scenario keys for one run ID; it never scans or wipes a store. All inspection/removal requests use the 20-request cleanup reserve; an exhausted reserve reports leftovers for a subsequent bounded cleanup run.
+- Stop all test servers before explicit cleanup. Roblox provides no atomic compare-and-remove operation: the marker inspection and `RemoveAsync` are separate requests, so cleanup must not race another writer. The write guard and fresh run IDs prevent this harness from adopting foreign records; the store/universe must still remain exclusively disposable.
+- Player API load waits allow 20 seconds; shutdown retains the shipped 25-second deadline. A/B stage polling makes at most ten uncached reads per stage, spaced 12 seconds apart (twice the approximate six-second write cooldown), allowing a bounded 120-second window without raising the request ceilings. These delays tolerate normal per-key write queuing; provider outages can still fail the acceptance.
 - A suite preflight refuses a run ID with any existing fixture. Keep all run IDs from Output, especially after a crash. Do not run the suite concurrently with the same run ID. Only the documented contender pair shares an ID. Reset confirmation to false when done; Rojo rebuild/sync also resets the default attribute to false.
 
 ## Owner steps after approval
@@ -66,7 +72,7 @@ Do not format or hand-edit the generated factory, and never fix `luau/lib` from 
 4. **shutdown:** the exact shipped `BindToClose` body waits for a yielding Player API save, flushes Coins=91 and releases. Startup invokes the captured callback, so this alone does not prove the engine shutdown event; use `shutdown-arm`/`shutdown-verify` below.
 5. **invalid:** seed an infinity value through Engine `UpdateAsync`, verify it was preserved, require default refusal after one attempt without adding a lock/backup, then use **`onInvalidData = PlayerData.sanitize`** through the Player API. Require Coins=0, Gems=3, and the original infinity in one backup. If the provider rejects or normalizes infinity, this fixture FAILS; no invalid-record/recovery claim is made. Engine non-finite serialization is described in the official reference below.
 6. **budget:** print actual `GetRequestBudgetForRequestType(UpdateAsync)` values before/after; two **injected** throttling errors send no provider calls; verify the shipped Session waits 0.05s then 0.10s and succeeds on its next real store call. This proves retry/backoff under injected faults and observes real budgets, **not actual provider throttling/outage**. Do not exhaust quotas to manufacture that proof. Headless also verifies zero-budget refusal and the request caps.
-7. **cleanup:** RemoveAsync every attempted write key (six in a successful suite; coordinator is unused) and verify absence through cancelled read-through updates. Any remaining current value or failed check prints its full key.
+7. **cleanup:** inspect every attempted write key (six in a successful suite; coordinator is unused), RemoveAsync only values with this run's marker, and verify absence through cancelled read-through updates. Any remaining current value, foreign marker or failed check prints its full key.
 
 Expected abbreviated suite output:
 
@@ -80,16 +86,17 @@ LOAD REFUSED: saved data is invalid (...) ... Set onInvalidData to recover
 PASS invalid: ...
 PASS budget: ... real throttling unproven
 LEFTOVERS: none
-PASS cleanup: 6 keys removed; verified absent via uncached UpdateAsync
+PASS cleanup: 6 keys absent; owned records removed and verified via uncached UpdateAsync
 DATASTORE ACCEPTANCE: 7 passed, 0 failed
-REQUESTS: 44/60 (includes read-through UpdateAsync and cleanup)
+REQUESTS: 51/60 (includes listing, read-through UpdateAsync and cleanup)
 ```
 
-Real provider errors can change attempt counts. Headless expects 44. Refusal examples (no store acquired):
+Real provider errors can change attempt counts. Headless expects 51, including one listing and six ownership inspections. Refusal examples (no store acquired):
 
 ```text
 DATASTORE ACCEPTANCE REFUSED: manually set ServerScriptService.MoonbrickAcceptanceConfirmed = true; no DataStore acquired
 DATASTORE ACCEPTANCE REFUSED: place/universe ID pair is absent from Config.allowedPlaces (empty by default); no DataStore acquired
+DATASTORE ACCEPTANCE REFUSED: ... universe contains another DataStore: ProductionPlayerData; no DataStore acquired
 ```
 
 ## Real engine shutdown and restart
@@ -112,7 +119,7 @@ The library's shutdown body has a 25-second deadline; Roblox may terminate a ser
 Prepare **two Studio windows** of the same new published place, both with the identical allowlisted IDs and explicit fresh run ID, e.g. `PairOct13a`. Keep configuration edits local to each window so publishing one role cannot replace the other.
 
 1. Window A: set `contender-a`, confirmation true. Window B: set `contender-b`, confirmation true. Open both server Output panes before starting.
-2. In A choose Test → **Start / Local Server**. As soon as it prints `A HOLDING`, start **another Local Server from window B** within 20 seconds. Starting two clients inside one Local Server is insufficient; they share one server environment. The UI may prevent two sessions from one Studio window, which is why the second window is required.
+2. In A choose Test → **Start / Local Server**. As soon as it prints `A HOLDING`, start **another Local Server from window B** within 60 seconds. Each coordinator stage allows a bounded 120-second polling window to accommodate startup and per-key write cooldowns. Starting two clients inside one Local Server is insufficient; they share one server environment. The UI may prevent two sessions from one Studio window, which is why the second window is required.
 3. Both use `AcceptanceTest_contention_<ID>` and `AcceptanceTest_coordinator_<ID>`. A loads/holds, then publishes coordinator stage `holding`. B must print `B REFUSED live A lock` before publishing `refused`. A then saves Coins=77 and releases, publishes `released`; B freshly loads Coins=77 and releases, publishes `complete`. A alone cleans both keys after observing completion. Same process IDs are immaterial; the modules generate unique ownership tokens and the harness supplies distinct synthetic job IDs.
 4. Require `PASS two-server-a`, `PASS two-server-b`; A's summary is **2 passed, 0 failed** (includes cleanup), B's **1 passed, 0 failed**. A must print `LEFTOVERS: none`. Save Output from both server processes. If a stage times out, stop **both** servers and run cleanup mode with the pair ID. B intentionally does not remove A's held key.
 5. Team Test with multiple clients usually remains one server and does not alone establish two-server contention. Use it only if the operator can demonstrate two independent Studio server environments with the same place/universe; otherwise use the two-window Local Server method. Public/private published game-server sessions are refused by these Studio-only rails; this is not proof of production fleet contention or actual player hopping.
@@ -121,7 +128,7 @@ Prepare **two Studio windows** of the same new published place, both with the id
 
 The owner must approve the disposable name, account/group, new private universe, Studio API access and transient fixture writes. The operator must fill exact live IDs manually and retain all run IDs/Output. Live suite, natural expiry, engine shutdown/restart, and two-server runs remain unrun until that approval. Real throttling/outage, forced player disconnect and shutdown-during-load are not implemented as live fault generation here and remain separate release requirements. No PlayerData defect was reproduced by this harness; report any future defect with a failing memory fixture before changing the library.
 
-Official references (documentation only, no Roblox API calls): [Studio DataStore access](https://create.roblox.com/docs/cloud-services/data-stores), [serialization and retained versions](https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching), [Engine non-finite values](https://create.roblox.com/docs/cloud/guides/data-stores#non-finite-numbers), [key limits and budgets](https://create.roblox.com/docs/cloud-services/data-stores/error-codes-and-limits).
+Official references (documentation only, no Roblox API calls): [Studio DataStore access](https://create.roblox.com/docs/cloud-services/data-stores), [serialization and retained versions](https://create.roblox.com/docs/cloud-services/data-stores/versioning-listing-and-caching), [Engine non-finite values](https://create.roblox.com/docs/cloud/guides/data-stores#non-finite-numbers), [key limits and budgets](https://create.roblox.com/docs/cloud-services/data-stores/error-codes-and-limits), [StandardList request category](https://create.roblox.com/docs/reference/engine/enums/DataStoreRequestType).
 
 ## Exact approval request for the orchestrator
 

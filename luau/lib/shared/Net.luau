@@ -209,7 +209,7 @@ local function checkOptions(opts: Options?): number
 end
 
 local function allow(name: string, player: Player, rate: number): boolean
-	if player.Parent == nil then
+	if not player.Parent then
 		return false
 	end
 	local perRemote = buckets[name]
@@ -248,6 +248,8 @@ local function reject(name: string, player: Player, reason: string)
 		rejections[name] = state
 	end
 	reason = reason:gsub("%c", " ")
+	-- Strip UTF-8 C1 controls and bidi overrides/isolates without damaging other codepoints.
+	reason = reason:gsub("\194[\128-\159]", ""):gsub("\226\128[\170-\174]", ""):gsub("\226\129[\166-\169]", "")
 	local length = math.min(#reason, MAX_REASON_LENGTH)
 	-- Retreat to the start of a codepoint if the byte limit falls inside it.
 	while length > 0 and length < #reason do
@@ -258,6 +260,9 @@ local function reject(name: string, player: Player, reason: string)
 		length -= 1
 	end
 	reason = reason:sub(1, length)
+	if reason == "" then
+		reason = "invalid"
+	end
 	local key = reason
 	if key == "other" or (not state.reasons[key] and state.reasonCount >= MAX_REASONS - 1) then
 		key = "other"
@@ -267,7 +272,7 @@ local function reject(name: string, player: Player, reason: string)
 	end
 	state.reasons[key] = (state.reasons[key] or 0) + 1
 	state.total += 1
-	if player.Parent ~= nil and not state.players[player] then -- first warning per connected player
+	if player.Parent and not state.players[player] then -- first warning per connected player
 		state.players[player] = true
 		state.distinctPlayers += 1
 		warn(`Net: rejected '{name}' from {player.Name}: {reason}`)
@@ -320,12 +325,18 @@ function Net.on(name: string, validators: { Validator }, handler: (Player, ...an
 	local r = remote(name, "RemoteEvent") :: RemoteEvent
 	registered[name] = true
 	return r.OnServerEvent:Connect(function(player, ...)
+		if not player.Parent then
+			return
+		end
 		if not allow(name, player, rate) then
 			return reject(name, player, "rate limit")
 		end
 		local ok, err = Net.check(validators, { ... }, select("#", ...))
 		if not ok then
 			return reject(name, player, err or "invalid")
+		end
+		if not player.Parent then
+			return
 		end
 		handler(player, ...)
 	end)
@@ -345,6 +356,9 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 	registered[name] = true
 	inFlight[name] = {}
 	r.OnServerInvoke = function(player, ...)
+		if not player.Parent then
+			return nil
+		end
 		if not allow(name, player, rate) then
 			reject(name, player, "rate limit")
 			return nil
@@ -354,7 +368,7 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 			reject(name, player, err or "invalid")
 			return nil
 		end
-		if player.Parent == nil then
+		if not player.Parent then
 			return nil
 		end
 		local perRemote = inFlight[name]

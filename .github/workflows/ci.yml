@@ -53,6 +53,28 @@ jobs:
           python scripts/test-luau.py --luau "$exe"
           # Memory-store run of the live DataStore acceptance harness; also fails if its PlayerData copy drifted.
           python acceptance/datastore/run-headless.py --luau "$exe"
+      - name: Strict DataStore acceptance analysis, lint and formatting
+        run: |
+          export PATH="$HOME/.rokit/bin:$PATH"
+          cd acceptance/datastore
+          curl -fsSL --connect-timeout 10 --max-time 60 \
+            https://luau-lsp.pages.dev/type-definitions/globalTypes.PluginSecurity.d.luau \
+            -o globalTypes.d.luau
+          test -s globalTypes.d.luau
+          rojo sourcemap default.project.json -o sourcemap.json
+          # Some analyzer diagnostics can accompany exit 0; require empty source output too.
+          luau_status=0
+          luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau --formatter=plain src tests \
+            > "$RUNNER_TEMP/datastore-analysis.txt" 2>&1 || luau_status=$?
+          cat "$RUNNER_TEMP/datastore-analysis.txt"
+          test "$luau_status" -eq 0
+          diagnostics=$(grep -vE '^\[(INFO|WARN)\]|^Results:|^[0-9]+ (errors|warnings|parse errors)|^[[:space:]]*$' \
+            "$RUNNER_TEMP/datastore-analysis.txt" || true)
+          test -z "$diagnostics"
+          selene --display-style=quiet src tests
+          # Generated factory is checked byte-for-byte by run-headless.py; preserve the shipped body.
+          find src tests -type f -name '*.luau' ! -name 'PlayerDataFactory.luau' -print0 \
+            | xargs -0 stylua --check --config-path ../../template/stylua.toml
       - name: Scaffold, check and build
         env:
           GIT_AUTHOR_NAME: Moonbrick CI

@@ -371,13 +371,64 @@ return function(t: any)
 		f.fire("Late", f.player, 1)
 		f.invoke("LateRequest", f.player, 1)
 		t.eq(calls, 0)
-		t.eq(f.net.stats().Late.distinctPlayers, 0)
-		t.eq(f.net.stats().LateRequest.distinctPlayers, 0)
-		t.eq(f.net.stats().Late.total, 1)
+		t.eq(f.net.stats().Late, nil, "departed event must not count as a rate rejection")
+		t.eq(f.net.stats().LateRequest, nil, "departed request must not count as a rate rejection")
 		t.eq(#f.warnings, 0)
 		f.player.Parent = {} -- rejoin must start with a fresh bucket
 		f.fire("Late", f.player)
 		t.eq(calls, 1)
+	end)
+	t.test("Net event handler stops after a validator yields past leave", function()
+		local f = fixture()
+		local calls = 0
+		f.net.on("YieldAccept", {
+			function()
+				coroutine.yield()
+				return true
+			end,
+		}, function()
+			calls += 1
+		end)
+		local call = coroutine.create(function()
+			f.fire("YieldAccept", f.player, 1)
+		end)
+		t.ok(coroutine.resume(call))
+		f.leave(f.player)
+		f.player.Parent = nil
+		t.ok(coroutine.resume(call))
+		t.eq(calls, 0)
+		t.eq(f.net.stats().YieldAccept, nil)
+		t.eq(#f.warnings, 0)
+	end)
+	t.test("Net strips C1 and bidi controls from warning and statistics reasons", function()
+		local f = fixture()
+		local controls = ""
+		for cp = 0x80, 0x9F do
+			controls ..= utf8.char(cp)
+		end
+		for cp = 0x202A, 0x202E do
+			controls ..= utf8.char(cp)
+		end
+		for cp = 0x2066, 0x2069 do
+			controls ..= utf8.char(cp)
+		end
+		f.net.on("Controls", {
+			function(value: any)
+				return false, controls .. value .. controls
+			end,
+		}, function() end)
+		f.fire("Controls", f.player, "é safe")
+		t.eq(f.net.stats().Controls.reasons["argument 1: é safe"], 1)
+		t.eq(f.warnings[1], "Net: rejected 'Controls' from Test: argument 1: é safe")
+		-- An empty reason from a custom check still has a useful warning/statistics key.
+		local g = fixture()
+		g.net.check = function()
+			return false, ""
+		end
+		g.net.on("Empty", {}, function() end)
+		g.fire("Empty", g.player)
+		t.eq(g.net.stats().Empty.reasons.invalid, 1)
+		t.eq(g.warnings[1], "Net: rejected 'Empty' from Test: invalid")
 	end)
 	t.test("Net rejection after a validator yields past leave keeps only totals", function()
 		local f = fixture()
