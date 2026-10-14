@@ -81,6 +81,8 @@ Then start your first game in Claude Code:
 /moonbrick:new my-game
 ```
 
+Start with the command (or say "use Moonbrick"): in our benchmark, Claude did not pick up the skills on its own for a terse "make a Roblox game" request ([details](docs/BENCHMARK.md)). Inside a Moonbrick project, the generated `CLAUDE.md` points it at the skills.
+
 The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) 1.2.0 and pinned Rojo/luau-lsp/Selene/StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, and review the connection diff. The development branch contains unreleased V1 work; [current evidence and release gates](docs/V1-STATUS.md) distinguish local checks from production readiness.
 
 ## 🧰 What you get

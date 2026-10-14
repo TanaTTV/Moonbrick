@@ -16,8 +16,13 @@ Status: PASS · FAIL · BLOCKED · NOT TESTED · IN PROGRESS. Evidence kinds: **
 | 7 | StyLua format + CI format check | PASS (CI) | CI run 38449394466 |
 | 8 | Real DataStore acceptance (published *test* experience only) | BLOCKED (owner publishing step) | Owner approved 2026-10-13. Harness: allowlist + confirmation + Studio-server gates, universe must contain no other DataStore, run-authored writes/cleanup, 40+20 request cap; headless PASS; R2 verdict: safe to run |
 | 9 | Import fidelity (large/UI/rig/terrain) | PASS (real Rojo, synthetic places) | `scripts/test-import-fidelity.py`: 2,369 instances / 332 scripts, .rbxlx + .rbxl, full property + sibling-order diff, 0 unexpected differences; import 1.6 s. Terrain voxels + live Studio connection NOT TESTED |
-| 10 | Performance + token-efficiency benchmark (measured, no invented numbers) | IN PROGRESS | Studio tree-output benchmark (PR #1). Claude Code with/without Moonbrick, 6 Sonnet runs, owner-approved, running |
-| 11 | Representative end-to-end workflow demonstration | NOT TESTED | orchestrator, after integration |
+| 10 | Performance + token-efficiency benchmark (measured, no invented numbers) | PASS (measured; result is not a saving) | `docs/BENCHMARK.md`, Sonnet, n=3/condition: plugin merely installed → skills never invoked, cost ≈ baseline ($0.147 vs $0.156 median); told to use Moonbrick → 3/3 used it, session-locked PlayerData in 3/3 vs naive DataStore in 6/6 baseline, ≈1.9× median cost ($0.293). All 9 runs pass headless/static checks. Studio tree benchmark: fewer chars, higher latency |
+| 11 | Representative end-to-end workflow demonstration | PASS (headless + Studio, separate) | Benchmark E runs: Claude Code + Moonbrick from empty dir → scaffold → feature → strict check/lint/build (3/3). Crystal Rush: built, synced to Studio, played (pickup, HUD, multiplayer in PR #1 QA). Not one continuous session |
 | 12 | Independent security/persistence review of all V1-beta changes | PASS (2 rounds) | R1 + R2 (Claude Sonnet, read-only); all MED findings fixed (F1, F2a, F2b) |
-| 13 | GitHub CI green on integration branch | PASS through 1e4db78; latest pending | stability ×3, install ×2, plugin |
+| 13 | GitHub CI green on integration branch | PASS @ a979997 (latest push pending) | stability ×3, install ×2, plugin |
 | 14 | Release version/tag/publication | BLOCKED (owner decision) | — |
+
+## Known limitations found during V1 beta
+
+- Moonbrick skills are not invoked automatically for a terse, constraint-heavy headless prompt; users should start with `/moonbrick:new` (documented in README). Measured in `docs/BENCHMARK.md`.
+- Explicit Moonbrick use costs more tokens on a small task (≈1.9× median) in exchange for session-locked saves and validated remotes; no token saving is claimed.
