@@ -68,10 +68,14 @@ def command(args, cwd=ROOT, env=None, timeout=120):
 def claude_command():
     # Use the JS entrypoint directly: Windows .cmd quoting loses inline JSON.
     node, wrapper = shutil.which('node'), shutil.which('claude.cmd' if os.name == 'nt' else 'claude')
-    if os.name == 'nt' and wrapper and node:
-        cli = Path(wrapper).parent / 'node_modules/@anthropic-ai/claude-code/cli.js'
-        if cli.is_file():
-            return [node, str(cli)]
+    if os.name == 'nt' and wrapper:
+        package = Path(wrapper).parent / 'node_modules/@anthropic-ai/claude-code'
+        # Newer packages ship a native bin/claude.exe; cmd.exe would cut argv at the prompt's first newline.
+        if (package / 'bin/claude.exe').is_file():
+            return [str(package / 'bin/claude.exe')]
+        if node and (package / 'cli.js').is_file():
+            return [node, str(package / 'cli.js')]
+        raise RuntimeError('only the claude.cmd wrapper was found; it truncates multi-line prompts')
     if not wrapper:
         raise RuntimeError('claude executable unavailable')
     return [wrapper]
