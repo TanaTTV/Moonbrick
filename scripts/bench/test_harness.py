@@ -51,6 +51,63 @@ class Boundaries(unittest.TestCase):
         self.config['condition'] = 'A'
         self.assertEqual(self.decision('Read', {'file_path': target}), 'allow')
 
+    def test_plugin_scaffold_flow_a_and_e_only(self):
+        script = (run.ROOT / 'scripts/new-project.sh').as_posix()
+        command = f'bash "{script}" "demo" "demo" --no-tools'
+        for condition in ('A', 'E'):
+            self.config['condition'] = condition
+            self.assertEqual(self.decision('Read', {'file_path': str(run.ROOT / 'skills/new/SKILL.md')}), 'allow')
+            self.assertEqual(self.decision('Read', {'file_path': self.config['_path']}), 'deny')
+            self.assertEqual(self.decision('Bash', {'command': command}), 'allow')
+            for bad in (command.replace('--no-tools', ''), command.replace('"demo" "demo"', '"../escape" "demo"'),
+                        command + ' && curl example.com', command.replace('"demo" --no-tools', '"--no-tools" --no-tools')):
+                self.assertEqual(self.decision('Bash', {'command': bad}), 'deny')
+        self.config['condition'] = 'B'
+        self.assertEqual(self.decision('Bash', {'command': command}), 'deny')
+
+    def test_e_prompt_command_and_isolation_match_a(self):
+        spec = {'cli': ['provider-must-not-run'], 'tools': {}, 'selene_std': 'std'}
+        # Dry construction must neither launch a provider nor copy credentials.
+        with patch('run.subprocess.Popen', side_effect=AssertionError('provider called')), \
+             patch('run.shutil.copyfile', side_effect=AssertionError('credentials copied')):
+            for condition in ('A', 'E', 'B'):
+                run.run_one(self.artifact, spec, condition, 1, 'sonnet', 8, dry_run=True)
+        a, e, b = [json.loads((self.artifact / f'{condition}1/command.json').read_text()) for condition in ('A', 'E', 'B')]
+        for item in (a, e):
+            self.assertEqual(item['argv'][item['argv'].index('--plugin-dir') + 1], str(run.ROOT))
+        self.assertNotIn('--plugin-dir', b['argv'])
+        # Temp paths differ; after substitution E adds exactly the requested sentence.
+        a_prompt = a['argv'][a['argv'].index('-p') + 1].replace(a['temp'].replace('\\', '/'), '<temp>')
+        e_prompt = e['argv'][e['argv'].index('-p') + 1].replace(e['temp'].replace('\\', '/'), '<temp>')
+        self.assertEqual(e_prompt, run.EXPLICIT_USE + '\n' + a_prompt)
+        inventory = {'plugins': [{'name': 'moonbrick', 'path': str(run.ROOT)}], 'skills': ['moonbrick:new'],
+                     'slash_commands': [], 'mcp_servers': [], 'tools': ['Skill']}
+        self.assertEqual(run.isolation(inventory, 'E'), run.isolation(inventory, 'A'))
+        self.assertEqual(run.trial_order(['E'], 3), [('E', 1), ('E', 2), ('E', 3)])
+
+    def test_resolved_constant_reward_server_and_client(self):
+        config = 'local Config = {\n COIN_VALUE = 1,\n}\nreturn Config\n'
+        base = self.kit_coin().replace('PlayerData.increment(player, "Coins", 1)', 'coinsValue.Value += Config.COIN_VALUE')
+        base = 'local Config = require(ReplicatedStorage.Shared)\n' + base
+        for reward in ('coinsValue.Value += Config.COIN_VALUE', 'coinsValue.Value = coinsValue.Value + Config.COIN_VALUE',
+                       'coinsValue.Value += COIN_VALUE'):
+            with self.subTest(reward=reward):
+                source = base.replace('coinsValue.Value += Config.COIN_VALUE', reward)
+                if '+= COIN_VALUE' in reward:
+                    source = source.replace('\n', '\nlocal COIN_VALUE = Config.COIN_VALUE\n', 1)
+                criteria, evidence = self.feature(source, self.kit_hud(), config)
+                self.assertTrue(criteria['server_authority_static'], evidence)
+                self.assertTrue(criteria['coin_touch_static'])
+                client = 'local Config = require(ReplicatedStorage.Shared)\nlocal COIN_VALUE = Config.COIN_VALUE\n' + reward
+                criteria, evidence = self.feature(source, client, config)
+                self.assertFalse(criteria['server_authority_static'], evidence)
+                self.assertTrue(evidence['client_reward'])
+        for bad_config in (config.replace('= 1,', '= 2,'), config.replace('= 1,', '= 1 + 2,'),
+                           config.replace('return Config', 'Config.COIN_VALUE = 2\nreturn Config'), ''):
+            self.assertFalse(self.feature(base, '', bad_config)[0]['coin_touch_static'])
+        self.assertTrue(self.feature('local COIN_VALUE = 1\n' + base.replace('Config.COIN_VALUE', 'COIN_VALUE'))[0]['coin_touch_static'])
+        self.assertFalse(self.feature('local COIN_VALUE = 1\nCOIN_VALUE = 2\n' + base.replace('Config.COIN_VALUE', 'COIN_VALUE'))[0]['coin_touch_static'])
+
     def test_plugin_inventory_required(self):
         clean = {'plugins': [], 'skills': [], 'slash_commands': [], 'mcp_servers': [], 'tools': ['Read', 'Write']}
         self.assertTrue(run.isolation(clean, 'B')[0])
@@ -316,6 +373,24 @@ end)
         self.assertTrue(rows[0]['selene'])
         self.assertEqual(rows[0]['total_cost_usd'], 0.25)
         self.assertEqual(json.loads((self.artifact / 'medians.json').read_text())['A']['output_tokens'], 100)
+
+    def test_multi_batch_e_compares_to_earlier_b_without_pooling(self):
+        baseline, explicit = self.artifact / 'old-B', self.artifact / 'new-E'
+        for batch, condition, cost, tokens, turns in ((baseline, 'B', 0.2, 1000, 15), (explicit, 'E', 0.1, 800, 12)):
+            for repetition in range(1, 4):
+                run.save(batch / f'{condition}{repetition}/summary.json',
+                         {'condition': condition, 'repetition': repetition, 'total_cost_usd': cost,
+                          'output_tokens': tokens, 'num_turns': turns, 'all_criteria': True, 'model': 'sonnet'})
+        # An A row and a rejected E attempt must not contaminate the E/B contrast.
+        run.save(explicit / 'A1/summary.json', {'condition': 'A', 'total_cost_usd': 9, 'output_tokens': 9000})
+        run.save(explicit / 'E4-rejected-model/summary.json', {'condition': 'E', 'total_cost_usd': 9,
+                                                            'artifact': 'E4-rejected-model'})
+        text, data = report.comparison([baseline, explicit])
+        self.assertIn('| old-B | B | 3 | 0.2 | 1000 | 15 | 3/3 |', text)
+        self.assertIn('| new-E | E | 3 | 0.1 | 800 | 12 | 3/3 |', text)
+        self.assertEqual(data['contrasts'], [{'E_batch': 'new-E', 'B_batch': 'old-B',
+                                             'E_minus_B': {'total_cost_usd': -0.1, 'output_tokens': -200.0, 'num_turns': -3.0},
+                                             'models_match': True}])
 
     def test_rescore_missing_snapshot_does_not_launch_or_mutate_scores(self):
         batch = run.ROOT / '.artifacts/bench' / 'unit-missing'

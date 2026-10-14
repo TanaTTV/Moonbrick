@@ -2,6 +2,7 @@
 
 Run from the bench worktree with `py -3 scripts/bench/run.py`.
 Provider calls require --run; --prepare captures a no-model preflight only.
+--dry-run writes the real command artifacts without invoking a provider.
 Only provider-reported accounting is used. Missing fields remain blank.
 """
 from __future__ import annotations
@@ -29,6 +30,8 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+CONDITIONS = ('A', 'B', 'E')
+EXPLICIT_USE = 'Use the Moonbrick plugin for this (start with its moonbrick:new skill, then follow moonbrick:game-systems).'
 PROMPT = '''Create a new Roblox game project and implement a server-authoritative coin pickup: coins spawn on the map, touching/collecting one awards +1 coin persisted per player, with a client HUD showing the count; it must pass strict type checking/lint.
 
 Work only inside the current empty directory (a subdirectory is fine). No Studio, MCP, publishing, installation, external writes, or subagents. The pinned rojo, luau-lsp, selene and stylua binaries are on PATH for both conditions. No tool installation is needed. Shell execution is confined to the trusted benchmark checker described below; use Read/Write/Edit/Glob/Grep for other file work. Do not write .claude settings or hooks, create symlinks, or modify files outside this directory.
@@ -134,13 +137,22 @@ def fetch_definitions(batch):
     return target
 
 
-def prepare(batch):
+def trial_order(conditions, reps):
+    # Preserve the original six-trial order for the default experiment.
+    if conditions == ['A', 'B'] and reps == 3:
+        return [('B', 1), ('A', 1), ('A', 2), ('B', 2), ('B', 3), ('A', 3)]
+    return [(condition, repetition) for repetition in range(1, reps + 1)
+            for condition in (list(reversed(conditions)) if repetition % 2 else conditions)]
+
+
+def prepare(batch, conditions=None, reps=3):
+    conditions = conditions or ['A', 'B']
     cli = claude_command()
     spec = dict(created_utc=datetime.now(timezone.utc).isoformat(), base_sha=command(['git', 'rev-parse', 'HEAD'])['stdout'].strip(),
                 branch=command(['git', 'branch', '--show-current'])['stdout'].strip(),
                 parameters={'requested_model': 'claude-sonnet-5-5', 'max_turns': 40,
-                            'repetitions': 3, 'single_run_seconds': 900, 'total_budget_usd': '8',
-                            'order': ['B1', 'A1', 'A2', 'B2', 'B3', 'A3']},
+                            'conditions': conditions, 'repetitions': reps, 'single_run_seconds': 900, 'total_budget_usd': '8',
+                            'order': [f'{c}{r}' for c, r in trial_order(conditions, reps)]},
                 cli=cli, help=command(cli + ['--help']), version=command(cli + ['--version']),
                 agents_before=command(cli + ['agents', '--json', '--all']),
                 tools=tools(), user_config_before=user_config_snapshot(),
@@ -199,12 +211,12 @@ def prepare_selene_std(batch, executable):
     return target
 
 
-def isolated_env(temp, binaries):
+def isolated_env(temp, binaries, copy_credentials=True):
     home, config, bin_dir = temp / 'home', temp / 'claude-config', temp / 'bin'
     for p in (home, config, bin_dir, temp / 'tmp'):
         p.mkdir()
     creds = Path.home() / '.claude/.credentials.json'
-    if creds.is_file():
+    if copy_credentials and creds.is_file():
         # Never save credentials in artifacts or committed summaries.
         shutil.copyfile(creds, config / '.credentials.json')
     for name, source in binaries.items():
@@ -261,14 +273,14 @@ def kill_owned(proc):
         proc.wait(timeout=30)
 
 
-def run_one(batch, spec, condition, repetition, model, remaining):
+def run_one(batch, spec, condition, repetition, model, remaining, dry_run=False):
     out = batch / f'{condition}{repetition}'
     out.mkdir()
     # Deliberately retained for review; credential copy is removed in finally.
-    temp = Path(tempfile.mkdtemp(prefix='moonbrick-bench-'))
+    temp = Path(tempfile.mkdtemp(prefix='moonbrick-bench-', dir=batch))
     project = temp / 'project'
     project.mkdir()
-    env = isolated_env(temp, spec['tools'])
+    env = isolated_env(temp, spec['tools'], copy_credentials=not dry_run)
     sandbox = temp / 'sandbox.json'
     save(sandbox, {'project': str(project), 'root': str(ROOT), 'condition': condition,
                    'artifact': str(out), 'definitions': str(batch / 'globalTypes.d.luau'),
@@ -281,6 +293,8 @@ def run_one(batch, spec, condition, repetition, model, remaining):
     save(temp / 'settings.json', settings)
     check = f'python "{(HERE / "sandbox.py").as_posix()}" check "{sandbox.as_posix()}" "<project-directory>"'
     prompt = PROMPT.format(check=check)
+    if condition == 'E':
+        prompt = EXPLICIT_USE + '\n' + prompt
     argv = spec['cli'] + ['-p', prompt, '--output-format', 'stream-json', '--verbose',
               '--effort', 'medium', '--max-turns', '40', '--max-budget-usd', str(remaining),
               '--permission-mode', 'acceptEdits', '--permission-prompts', 'none',
@@ -290,11 +304,15 @@ def run_one(batch, spec, condition, repetition, model, remaining):
               '--session-id', str(uuid.uuid4()), '--name', f'moonbrick-bench-{condition}{repetition}']
     if model:
         argv += ['--model', model]
-    if condition == 'A':
+    if condition in ('A', 'E'):
         argv += ['--plugin-dir', str(ROOT)]
     save(out / 'command.json', {'argv': argv, 'cwd': str(project), 'temp': str(temp),
                               'settings': settings, 'sandbox': json.loads(sandbox.read_text()),
                               'initial_project_files': list(project.iterdir()), 'requested_model': model})
+    if dry_run:
+        save(out / 'dry-run.json', {'provider_calls': 0, 'credential_copy_created': False})
+        print(f'{condition}{repetition}: dry-run command saved: {out / "command.json"}; provider calls: 0', flush=True)
+        return None, None, ''
     start = time.monotonic()
     messages, q = [], queue.Queue()
     status, result, init = 'missing_result', None, None
@@ -382,7 +400,7 @@ def summarize(batch, rows):
         lines.append('| ' + ' | '.join(str(row.get(k)) if row.get(k) is not None else 'not reported' for k in FIELDS) + ' |')
     (batch / 'summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     medians = {}
-    for condition in ('A', 'B'):
+    for condition in CONDITIONS:
         selected = [r for r in rows if r['condition'] == condition and r.get('total_cost_usd') is not None and '-rejected-model' not in r.get('artifact', '') and '-blocked-attempt' not in r.get('artifact', '')]
         medians[condition] = {'accounted_runs': len(selected)}
         for name in FIELDS[4:12]:
@@ -398,7 +416,7 @@ def rescore(batch):
     if not batch.is_relative_to(ROOT / '.artifacts/bench'):
         raise ValueError('rescore batch must stay under this worktree .artifacts/bench')
     runs = [p.parent for p in sorted(batch.glob('*/summary.json'))
-            if json.loads(p.read_text(encoding='utf-8')).get('condition') in ('A', 'B')]
+            if json.loads(p.read_text(encoding='utf-8')).get('condition') in CONDITIONS]
     if not runs:
         raise ValueError('no captured benchmark runs to rescore')
     missing = [p.name for p in runs if not (p / 'project-manifest.json').is_file() or not (p / 'project-source').is_dir()]
@@ -442,12 +460,20 @@ def rescore(batch):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
-    modes.add_argument('--run', action='store_true', help='Execute the authorized six sequential provider sessions')
+    modes.add_argument('--run', action='store_true', help='Execute sequential provider sessions for selected conditions')
     modes.add_argument('--prepare', action='store_true', help='Capture no-model preflight')
     modes.add_argument('--rescore', type=Path, help='Re-score preserved projects; never calls a provider')
+    modes.add_argument('--dry-run', action='store_true', help='Write command.json for selected trials; no provider or authentication copy')
+    parser.add_argument('--conditions', default='A,B', help='Comma-separated selection from A,B,E (default: A,B)')
+    parser.add_argument('--reps', type=int, default=3, help='Repetitions per condition (positive integer; default: 3)')
     parser.add_argument('--approved-shared-quota', action='store_true', help='Explicit user approval for existing Claude sessions')
     parser.add_argument('--batch', type=Path)
     args = parser.parse_args()
+    conditions = [c.strip() for c in args.conditions.split(',')]
+    if not conditions or any(c not in CONDITIONS for c in conditions) or len(set(conditions)) != len(conditions):
+        parser.error('--conditions must be unique comma-separated values from A,B,E')
+    if args.reps < 1:
+        parser.error('--reps must be positive')
     if args.rescore:
         try:
             rescore(args.rescore.resolve())
@@ -459,8 +485,17 @@ def main():
     if not batch.is_relative_to(ROOT / '.artifacts/bench'):
         parser.error('batch must stay under this worktree .artifacts/bench')
     batch.mkdir(parents=True, exist_ok=True)
-    spec = prepare(batch)
+    if args.run or args.dry_run:
+        if any(batch.glob('*/command.json')):
+            parser.error('batch already contains command artifacts; choose a new batch')
+    spec = prepare(batch, conditions, args.reps)
     print(f'Artifacts: {batch}', flush=True)
+    if args.dry_run:
+        for condition, repetition in trial_order(conditions, args.reps):
+            run_one(batch, spec, condition, repetition, spec['parameters']['requested_model'], Decimal('8'), dry_run=True)
+        save(batch / 'stop.json', {'reason': 'dry_run_no_provider_calls', 'provider_runs': 0})
+        summarize(batch, [])
+        return
     if not args.run:
         save(batch / 'stop.json', {'reason': 'preflight_only_no_provider_runs'})
         summarize(batch, [])
@@ -479,7 +514,7 @@ def main():
     rows, total, blockers = [], Decimal('0'), 0
     model = 'claude-sonnet-5-5'
     reason = 'completed'
-    for condition, repetition in [('B', 1), ('A', 1), ('A', 2), ('B', 2), ('B', 3), ('A', 3)]:
+    for condition, repetition in trial_order(conditions, args.reps):
         while True:
             # Recheck sessions before every call; no child Agent tool exists.
             agents = command(spec['cli'] + ['agents', '--json', '--all'])

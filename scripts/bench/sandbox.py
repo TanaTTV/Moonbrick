@@ -52,8 +52,8 @@ def hook(config):
             reason = 'Writes are confined to game files in the disposable project; settings/hooks/git writes denied.'
     elif name in ('Read', 'Glob', 'Grep'):
         target = local_path(args.get('file_path', args.get('path', cwd)), cwd)
-        if not inside(target, root) and not (config['condition'] == 'A' and inside(target, kit)):
-            reason = 'Reads confined to the disposable project and, for A only, the selected Moonbrick source.'
+        if not inside(target, root) and not (config['condition'] in ('A', 'E') and inside(target, kit)):
+            reason = 'Reads confined to the disposable project and, for A/E, the selected Moonbrick source.'
     elif name == 'Bash':
         try:
             text = args.get('command', '')
@@ -65,15 +65,17 @@ def hook(config):
             if len(tokens) == 5 and tokens[0] in ('python', 'python3') and Path(tokens[1]).resolve() == executor and tokens[2] == 'check':
                 if Path(tokens[3]).resolve() != Path(config['_path']).resolve() or not inside(local_path(tokens[4], cwd), root):
                     raise ValueError('Checker config and target must belong to this run.')
-            elif config['condition'] == 'A' and len(tokens) == 5 and tokens[0] == 'bash' and local_path(tokens[1], cwd).resolve() == kit / 'scripts/new-project.sh' and tokens[4] == '--no-tools':
+            elif config['condition'] in ('A', 'E') and len(tokens) == 5 and tokens[0] == 'bash' and local_path(tokens[1], cwd).resolve() == kit / 'scripts/new-project.sh' and tokens[4] == '--no-tools':
                 if not inside(local_path(tokens[2], cwd), root):
                     raise ValueError('Scaffold target must be inside the run directory.')
+                if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]*', tokens[3]):
+                    raise ValueError('Scaffold name must be a plain project name, not an option.')
             elif len(tokens) == 2 and tokens[0] == 'bash':
                 script = local_path(tokens[1], cwd)
                 if not inside(script, root) or not script.is_file() or sha(script) != sha(kit / 'template/tools/check.sh'):
                     raise ValueError('Only the unmodified template checker may be run.')
             else:
-                raise ValueError('Allowed shell commands: trusted benchmark checker, unmodified template checker, or A-only new-project.sh <local-target> <name> --no-tools.')
+                raise ValueError('Allowed shell commands: trusted benchmark checker, unmodified template checker, or A/E new-project.sh <local-target> <name> --no-tools.')
         except (ValueError, OSError) as e:
             reason = str(e)
     elif name != 'Skill':
@@ -173,6 +175,52 @@ def debounce_signal(text):
     return False
 
 
+def literal_constants(text):
+    """Only unambiguous, literal-one assignments; expressions/reassignments fail closed."""
+    assignments = {}
+    for name, expression in re.findall(r'(?m)^\s*(?:local\s+)?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*(?::\s*number\s*)?=\s*([^\n,}]+)', text):
+        assignments.setdefault(name, []).append(expression.strip().rstrip(';').strip())
+    return {name for name, values in assignments.items()
+            if all(re.fullmatch(r'1(?:\.0+)?', value) for value in values)}
+
+
+def module_constants(text):
+    """Scan a returned flat config table, or literal fields assigned to its returned name."""
+    returned = re.search(r'\breturn\s+(\w+)\s*;?\s*$', text)
+    name = returned[1] if returned else None
+    table = re.search(r'\b(?:local\s+' + re.escape(name) + r'\s*=|return)\s*\{([^}]+)', text) if name else re.search(r'\breturn\s*\{([^}]+)', text)
+    constants = literal_constants(table[1].replace(',', '\n')) if table else set()
+    if name:
+        constants.update(key.split('.', 1)[1] for key in literal_constants(text) if key.startswith(name + '.'))
+        # A later assignment to a table field must not contradict its initial value.
+        for field, expression in re.findall(r'\b' + re.escape(name) + r'\.(\w+)\s*=\s*([^\n;]+)', text):
+            if not re.fullmatch(r'1(?:\.0+)?', expression.strip()):
+                constants.discard(field)
+    return constants
+
+
+def resolved_ones(text, modules):
+    constants = literal_constants(text)
+    for alias, expression in re.findall(r'local\s+(\w+)\s*=\s*require\s*\(([^\n]+)\)', text):
+        names = re.findall(r'[A-Za-z_]\w*', expression)
+        if names and names[-1] in modules:
+            constants.update(alias + '.' + field for field in modules[names[-1]])
+    # One level of a local constant alias, e.g. local COIN_VALUE = Config.COIN_VALUE.
+    for alias, value in re.findall(r'(?m)^\s*local\s+(\w+)\s*(?::\s*number\s*)?=\s*([\w.]+)\s*$', text):
+        if value in constants and len(re.findall(r'\b' + re.escape(alias) + r'\s*=', text)) == 1:
+            constants.add(alias)
+    return constants
+
+
+def reward_pattern(constants=()):
+    amount = r'(?:1(?![\w.+-])' + ''.join('|' + re.escape(name) + r'(?![\w.+-])' for name in sorted(constants)) + ')'
+    coin_key = r'(?:["\'][Cc]oins?["\']|\w+\.(?:COINS?_KEY|[Cc]oins?Key))'
+    return (r'(?:\b[\w.]+\s*\.\s*Value\s*(?:\+=\s*' + amount + r'|=\s*[\w.]+\.Value\s*\+\s*' + amount + r')'
+            r'|\b[Cc]oins?(?:\[[^\]\n]+\])?\s*(?:\+=\s*' + amount + r'|=\s*[^\n]+\+\s*' + amount + r')'
+            r'|\bPlayerData\s*\.\s*increment\s*\([^,\n]+,\s*' + coin_key + r'\s*,\s*' + amount + r'\s*\)'
+            r'|\bsetCoins\s*\([^,\n]+,\s*\w+\s*\+\s*' + amount + r'\s*\))')
+
+
 def static_score(source, sourcemap, kit):
     classes = {}
     def walk(node, ancestors=()):
@@ -207,13 +255,18 @@ def static_score(source, sourcemap, kit):
         elif 'ReplicatedStorage' in lineage:
             shared.append((rel, text))
     s, c = '\n'.join(t for _, t in server), '\n'.join(t for _, t in client)
-    coin_key = r'(?:["\'][Cc]oins?["\']|\w+\.(?:COINS?_KEY|[Cc]oins?Key))'
-    reward = (r'(?:\b[\w.]+\s*\.\s*Value\s*(?:\+=\s*1\b|=\s*[\w.]+\.Value\s*\+\s*1\b)'
-              r'|\b[Cc]oins?(?:\[[^\]\n]+\])?\s*(?:\+=\s*1\b|=\s*[^\n]+\+\s*1\b)'
-              r'|\bPlayerData\s*\.\s*increment\s*\([^,\n]+,\s*' + coin_key + r'\s*,\s*1\s*\)'
-              r'|\bsetCoins\s*\([^,\n]+,\s*\w+\s*\+\s*1\s*\))')
-    server_reward = bool(re.search(reward, s))
-    client_reward = bool(re.search(reward, c))
+    modules = {}
+    for rel, text in server + shared:
+        path = (source / rel).resolve()
+        if classes[path][0] == 'ModuleScript':
+            name = path.stem
+            fields = module_constants(text)
+            # Duplicate module names must agree; never choose an arbitrary one.
+            modules[name] = modules[name] & fields if name in modules else fields
+    def has_reward(text):
+        return bool(re.search(reward_pattern(resolved_ones(text, modules)), text))
+    server_reward = any(has_reward(text) for _, text in server)
+    client_reward = any(has_reward(text) for _, text in client)
     spawn = bool(re.search(r'Instance\.new\s*\(\s*["\']Part["\']', s)) and bool(re.search(r'\b(?:coin|Coin)', s))
     touch = bool(re.search(r'\.Touched\s*:\s*Connect\s*\(', s))
     player_resolve = bool(re.search(r'GetPlayerFromCharacter|FindFirstAncestor(?:OfClass)?|GetPlayers', s))
@@ -229,10 +282,10 @@ def static_score(source, sourcemap, kit):
         validated = re.findall(r'Net\s*\.\s*(?:on|handle)\s*\(\s*[^,\n]+,\s*\{[^}]*\bNet\s*\.\s*(?:string|number|int|boolean|vector3|instance|oneOf)\s*\([^}]*\}', text)
         return bool(registrations) and len(validated) == len(registrations) and not re.search(r'OnServerEvent|OnServerInvoke', text)
     remote_guard = bool(remote_files) and all(guarded(text) for text in remote_files)
-    shared_reward = any(re.search(reward, text) and not re.search(r'IsServer\s*\(', text) for _, text in shared)
+    shared_reward = any(has_reward(text) and not re.search(r'IsServer\s*\(', text) for _, text in shared)
     authority = server_reward and player_resolve and humanoid and consumed and not client_reward and not shared_reward and (not remote_reward or remote_guard)
     direct = all(re.search(pattern, s) for pattern in (r'DataStoreService', r'GetDataStore\s*\(', r'GetAsync\s*\(', r'(?:UpdateAsync|SetAsync)\s*\(', r'PlayerRemoving', r'BindToClose'))
-    playerdata = all(re.search(pattern, s) for pattern in (r'require\s*\([^\n]*PlayerData', r'\w+\.start\s*\(', r'\w+\.(?:wait|get)\s*\(', reward))
+    playerdata = server_reward and all(re.search(pattern, s) for pattern in (r'require\s*\([^\n]*PlayerData', r'\w+\.start\s*\(', r'\w+\.(?:wait|get)\s*\('))
     # Actual managed PlayerData must be server-mapped, with a persistent-store path.
     data_modules = [p for p, (_, lineage) in classes.items() if p.name == 'PlayerData.luau' and 'ServerScriptService' in lineage and p.is_file()]
     managed = any(all(x in p.read_text(encoding='utf-8') for x in ('GetDataStore', 'UpdateAsync', 'PlayerRemoving', 'BindToClose')) for p in data_modules)
