@@ -69,7 +69,7 @@ function Lifecycle.new(factory: any, services: any, runtime: any, store: any, ke
 		end,
 	}
 	players.PlayerAdded:Fire(player)
-	local loaded = data.wait(player, 10)
+	local loaded = data.wait(player, 20) -- tolerate two ~6s per-key provider cooldowns
 	local adapter: any = { data = data, player = player, loaded = loaded }
 	function adapter:beginSave()
 		assert(self.loaded, "synthetic player failed to load")

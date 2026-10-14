@@ -34,17 +34,42 @@ Instance = { new = function(className)
     assert(className == "BindableEvent", "unexpected engine class " .. className)
     return { Event = {}, Fire = function() end }
 end }
+-- Provider yields and PlayerData wait/close deadlines share the deterministic clock.
+local os = table.clone(os)
+os.clock = function() return now end
 local runtime = { task = task, Instance = Instance, wait = task.wait, spawn = task.spawn, log = print,
-    requestTypes = { update = "UpdateAsync", remove = "SetIncrementAsync" } }
+    requestTypes = { update = "UpdateAsync", remove = "SetIncrementAsync", list = "StandardList" } }
 """
     for module in ("PlayerDataFactory", "Safety", "Lifecycle", "Scenarios"):
         source = (HERE / f"src/{module}.luau").read_text(encoding="utf-8")
         code += f"local {module} = (function()\n{source}\nend)()\n"
     main_source = (HERE / "src/Main.server.luau").read_text(encoding="utf-8")
-    # Execute the actual entry script's refusal path, not only its Safety helper.
+    # Execute the actual entry script with lexical engine/module fakes on BOTH gate paths.
     code += """
-local function assertMainRefusal(confirmed, allowedPlaces)
+local function runMain(config, fakeGame)
     local required = {}
+    local lines = {}
+    local game = fakeGame
+    local script = { Parent = { Config = "Config", Safety = "Safety", PlayerDataFactory = "PlayerDataFactory",
+        Lifecycle = "Lifecycle", Scenarios = "Scenarios" } }
+    local modules = { Config = config, Safety = Safety, PlayerDataFactory = PlayerDataFactory,
+        Lifecycle = Lifecycle, Scenarios = Scenarios }
+    local function require(name)
+        table.insert(required, name)
+        assert(modules[name], "Main required unexpected module " .. name)
+        return modules[name]
+    end
+    local function print(line) table.insert(lines, line) end
+    local warn = print
+    local Enum = { DataStoreRequestType = { UpdateAsync = "UpdateAsync", SetIncrementAsync = "SetIncrementAsync",
+        StandardList = "StandardList" } }
+    local function main()
+""" + main_source + """
+    end
+    main()
+    return lines, required
+end
+local function assertMainRefusal(confirmed, allowedPlaces)
     local fakeServices = {
         RunService = { IsServer = function() return true end, IsStudio = function() return true end },
         ServerScriptService = { GetAttribute = function() return confirmed end },
@@ -54,19 +79,10 @@ local function assertMainRefusal(confirmed, allowedPlaces)
             assert(fakeServices[name], "refused Main accessed unexpected service " .. name)
             return fakeServices[name]
         end }
-    local script = { Parent = { Config = "Config", Safety = "Safety" } }
-    local function require(name)
-        table.insert(required, name)
-        if name == "Safety" then return Safety end
-        assert(name == "Config", "refused Main required a live-capable module")
-        return { allowedPlaces = allowedPlaces, mode = "suite", runId = "" }
-    end
-    local warn = print
-    local function main()
-""" + main_source + """
-    end
-    main()
+    local lines, required = runMain({ allowedPlaces = allowedPlaces, mode = "suite", runId = "" }, game)
     assert(#required == 2, "refused Main passed its gate")
+    assert(#lines == 1 and lines[1]:find("DATASTORE ACCEPTANCE REFUSED", 1, true), "Main omitted refusal")
+    print(lines[1])
 end
 assertMainRefusal(nil, { [123] = 456 })
 assertMainRefusal(true, {})
@@ -78,7 +94,7 @@ print("PASS Main-default-refusal: actual entry script stopped before store/servi
 local complete = false
 task.spawn(function()
     spec({ factory = PlayerDataFactory, safety = Safety, lifecycle = Lifecycle, scenarios = Scenarios,
-        game = game, services = services, runtime = runtime })
+        game = game, services = services, runtime = runtime, main = runMain, clock = function() return now end })
     complete = true
 end)
 for _ = 1, 10000 do
