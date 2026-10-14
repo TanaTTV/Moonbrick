@@ -89,10 +89,27 @@ class DevServerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exclusive"): server.listener_pid(4999)
 
     def test_listener_ownership_accepts_child_and_rejects_foreign_parent(self):
-        with patch.object(server, "listener_pid", return_value=42), patch.object(server.subprocess, "run", return_value=Mock(stdout="99\n")):
+        with patch.object(server.os, "name", "posix"), patch.object(server, "listener_pid", return_value=42), patch.object(server.subprocess, "run", return_value=Mock(stdout="99\n")):
             self.assertTrue(server.listener_owned(4999, 99))
-        with patch.object(server, "listener_pid", return_value=42), patch.object(server.subprocess, "run", return_value=Mock(stdout="0\n")):
+        with patch.object(server.os, "name", "posix"), patch.object(server, "listener_pid", return_value=42), patch.object(server.subprocess, "run", return_value=Mock(stdout="0\n")):
             self.assertFalse(server.listener_owned(4999, 99))
+
+    def test_windows_ownership_walks_snapshot_without_powershell(self):
+        with patch.object(server.os, "name", "nt"), patch.object(server, "listener_pid", return_value=42), patch.object(server.subprocess, "run") as run:
+            with patch.object(server, "windows_parents", return_value={42: 7, 7: 99}):
+                self.assertTrue(server.listener_owned(4999, 99), "rokit shim -> rojo child is owned")
+            with patch.object(server, "windows_parents", return_value={42: 7, 7: 4}):
+                self.assertFalse(server.listener_owned(4999, 99))
+            with patch.object(server, "windows_parents", return_value={42: 42}):
+                self.assertFalse(server.listener_owned(4999, 99), "self-parent loops are bounded")
+            run.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "Windows process snapshot")
+    def test_windows_snapshot_reports_this_process_parent(self):
+        started = time.monotonic()
+        parents = server.windows_parents()
+        self.assertEqual(parents[os.getpid()], os.getppid())
+        self.assertLess(time.monotonic() - started, 2)
 
 
 if __name__ == "__main__": unittest.main()

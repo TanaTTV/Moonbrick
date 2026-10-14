@@ -76,18 +76,46 @@ def listener_pid(port):
     return owners.pop()
 
 
+def windows_parents():
+    # Toolhelp snapshot: PID -> parent PID in milliseconds. PowerShell/WMI cold starts took up to
+    # 20 s on CI, longer than the SessionStart hook's own 20 s budget.
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snapshot = kernel.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot in (None, wintypes.HANDLE(-1).value): raise OSError("process snapshot unavailable")
+    try:
+        entry, parents = Entry(), {}
+        entry.dwSize = ctypes.sizeof(Entry)
+        more = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            parents[entry.th32ProcessID] = entry.th32ParentProcessID
+            more = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        return parents
+    finally:
+        kernel.CloseHandle(snapshot)
+
+
 def listener_owned(port, launched_pid):
     pid = listener_pid(port)
+    parents = windows_parents() if os.name == "nt" else None
     for _ in range(16):
         if pid == launched_pid: return True
         if pid <= 1: return False
-        if os.name == "nt":
-            # Numeric PID only; never print process arguments, environment or credentials.
-            command = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').ParentProcessId"
-            # WMI/PowerShell cold start can exceed several seconds on busy or CI machines.
-            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True, text=True, timeout=20)
-        else:
-            result = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
+        if parents is not None:
+            # Numeric PIDs only; never read process arguments, environment or credentials.
+            if pid not in parents: return False
+            pid = parents[pid]
+            continue
+        result = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
         value = result.stdout.strip()
         if not value.isdigit(): return False
         pid = int(value)

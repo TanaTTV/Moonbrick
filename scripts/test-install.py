@@ -150,6 +150,28 @@ def stop_owned_process(pid, port):
         os.kill(listener, 15)
 
 
+def process_image(pid):
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=30).stdout
+        return out.split('","')[0].strip().strip('"').lower() if out.startswith('"') else ""
+    return subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True, timeout=5).stdout.strip().lower()
+
+
+def stop_orphaned_rojo(port):
+    """After a hook timeout there is no marker/PID. The port is this test's own ephemeral port, so a
+    rojo listener on it is ours; stop only that listener (never by PID from a file)."""
+    with socket.socket() as sock:
+        if sock.connect_ex(("127.0.0.1", port)) != 0:
+            return False
+    listener = dev_server.listener_pid(port)
+    require(Path(process_image(listener)).name.startswith("rojo"), "refusing to stop a non-Rojo listener")
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(listener), "/F"], check=True, timeout=30)
+    else:
+        os.kill(listener, 15)
+    return True
+
+
 def protected_plugin_paths():
     paths = [Path.home() / ".claude/plugins"]
     if os.environ.get("CLAUDE_CONFIG_DIR"):
@@ -348,8 +370,11 @@ class Acceptance:
                 failed = re.search(r"owned startup process PID (\d+) may still be running", self.last_output)
                 if failed:
                     pid = int(failed[1])
-            if pid is not None:
+            if pid is None:
+                pid = -1 if stop_orphaned_rojo(port) else None
+            elif pid > 0:
                 stop_owned_process(pid, port)
+            if pid is not None:
                 # Wait for the listener to close before deleting its project/logs.
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:

@@ -5,6 +5,7 @@ from contextlib import redirect_stdout
 import io
 import json
 import os
+import socket
 import shutil
 import subprocess
 from pathlib import Path
@@ -374,6 +375,20 @@ class ImportReviewRegressionTests(unittest.TestCase):
             with patch.object(project, "run", fake_rojo), redirect_stdout(out):
                 project.import_place(root, place)
             self.assertIn("Workspace, Lighting and StarterPlayer settings stay in the original place (not imported)", out.getvalue())
+
+
+    def test_orphaned_listener_stopped_only_when_it_is_rojo(self):
+        with socket.socket() as server_sock:
+            server_sock.bind(("127.0.0.1", 0)); server_sock.listen()
+            port = server_sock.getsockname()[1]
+            with patch.object(install.dev_server, "listener_pid", return_value=4242),                  patch.object(install, "process_image", return_value="node.exe"),                  patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+                with self.assertRaisesRegex(ValueError, "non-Rojo"):
+                    install.stop_orphaned_rojo(port)
+                run.assert_not_called(); kill.assert_not_called()
+            with patch.object(install.dev_server, "listener_pid", return_value=4242),                  patch.object(install, "process_image", return_value="rojo.exe"),                  patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+                self.assertTrue(install.stop_orphaned_rojo(port))
+                self.assertTrue(run.called or kill.called)
+        self.assertFalse(install.stop_orphaned_rojo(port), "nothing listening: nothing stopped")
 
 
 if __name__ == "__main__":
