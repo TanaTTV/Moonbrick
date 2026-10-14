@@ -81,6 +81,8 @@ def animation_evidence(rigs, asset, scene):
         if any(not track.mute for track in data.nla_tracks):
             raise ValueError("export one active action per rig; mute NLA tracks: " + rig.name)
         slot = data.action_slot if bpy.app.version >= (4, 4, 0) else None
+        if bpy.app.version >= (4, 4, 0) and slot is None:
+            raise ValueError("animation requires an assigned action slot: " + rig.name)
         curves = fcurves(data.action, slot)
         keyed = sorted({bone.name for bone in rig.pose.bones for curve in curves
                         if curve.data_path.startswith(bone.path_from_id() + ".") and len(curve.keyframe_points)})

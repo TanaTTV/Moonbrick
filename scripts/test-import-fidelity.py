@@ -27,33 +27,14 @@ from xml.sax.saxutils import escape
 ROOT = Path(__file__).resolve().parents[1]
 SERVICES = ("ReplicatedStorage", "ServerScriptService", "ServerStorage", "StarterGui", "StarterPlayer", "ReplicatedFirst")
 SCRIPT_CLASSES = ("Script", "LocalScript", "ModuleScript")
-CATEGORIES = ("missing", "extra", "class", "name_path_parent", "source", "attributes", "tags", "properties", "references", "duplicate_ambiguity")
+CATEGORIES = ("missing", "extra", "class", "name_path_parent", "order", "source", "attributes", "tags", "properties", "references", "duplicate_ambiguity")
 KIT_ROOTS = (("ReplicatedStorage", "Kit"), ("ServerScriptService", "Kit"), ("ServerStorage", "MCPKit"), ("ServerStorage", "Tests"))
 EXPECTED_REASONS = {
     "source_crlf": "Rojo 7.7.1 src/snapshot_middleware/lua.rs:66 (LF-normalized file reads); skills/import/SKILL.md#fidelity-limits",
     "default_properties": "Rojo 7.7.1 src/syncback/property_filter.rs; exact defaults measured by generated binary-model probe",
     "reference_metadata": "Rojo 7.7.1 src/syncback/ref_properties.rs:100-175; only validated additions for original Ref targets",
     "starterplayer_settings": "scripts/project.py:ENTRIES maps StarterPlayer script containers only; skills/import/SKILL.md#fidelity-limits",
-}
-KEY_PROPERTIES = {
-    "Script": ("Disabled", "RunContext"), "LocalScript": ("Disabled",),
-    "ScreenGui": ("Enabled", "ResetOnSpawn", "IgnoreGuiInset", "DisplayOrder"),
-    "Frame": ("Size", "Position", "BackgroundColor3", "BackgroundTransparency", "LayoutOrder"),
-    "TextLabel": ("Size", "Position", "Text", "RichText", "TextColor3", "TextSize", "FontFace", "TextXAlignment"),
-    "ImageLabel": ("Size", "Image", "ImageColor3", "ImageTransparency", "ScaleType"),
-    "UIListLayout": ("Padding", "FillDirection", "SortOrder"),
-    "UIGridLayout": ("CellSize", "CellPadding", "SortOrder"), "UIScale": ("Scale",),
-    "UICorner": ("CornerRadius",), "UIStroke": ("Color", "Thickness", "Transparency", "ApplyStrokeMode"),
-    "UIGradient": ("Color", "Transparency", "Rotation", "Offset"),
-    "Part": ("Size", "CFrame", "Color3uint8", "Anchored", "CanCollide", "Material", "Transparency"),
-    "Model": ("PrimaryPart",), "Motor6D": ("Part0", "Part1", "C0", "C1"),
-    "Attachment": ("CFrame",), "Bone": ("CFrame",), "Animation": ("AnimationId",),
-    "KeyframeSequence": ("Loop", "Priority"), "Keyframe": ("Time",),
-    "Pose": ("CFrame", "Weight", "EasingStyle", "EasingDirection"),
-    "StringValue": ("Value",), "Lighting": ("Brightness", "ClockTime", "Ambient", "OutdoorAmbient"),
-    "Atmosphere": ("Density", "Offset", "Color", "Decay", "Glare", "Haze"),
-    "Terrain": ("WaterColor", "WaterTransparency", "WaterWaveSize"),
-    "StarterPlayer": ("CharacterWalkSpeed", "CameraMaxZoomDistance"),
+    "order_filesystem": "Rojo 7.7.1 src/snapshot_middleware/dir.rs:47-56 reads filesystem order; src/project.rs:352 + snapshot_middleware/project.rs:201-211 sort project children; verified directory parents only",
 }
 
 
@@ -326,7 +307,8 @@ def pretty(key):
     return "/".join(f"{name}[{ordinal}]" for name, ordinal in key)
 
 
-def compare(original, rebuilt, defaults=None, allow_design=False, duplicates=()):
+def compare(original, rebuilt, defaults=None, allow_design=False, duplicates=(), default_breakdown=None,
+            directory_parents=()):
     counts, details = Counter({name: 0 for name in CATEGORIES}), []
     expected = Counter({name: 0 for name in EXPECTED_REASONS})
     defaults = defaults or {}
@@ -340,6 +322,27 @@ def compare(original, rebuilt, defaults=None, allow_design=False, duplicates=())
             counts["duplicate_ambiguity"] += 1
             details.append(f"duplicate_ambiguity: {pretty(key)} differs at sibling ordinal; identity is ambiguous (no property-based rematching)")
 
+    # parse_place retains XML traversal order. Group once, avoiding quadratic
+    # scans of the large fixture. Compare name+class, including distinct names.
+    def child_orders(nodes):
+        orders = {}
+        for key, node in nodes.items():
+            orders.setdefault(key[:-1], []).append((node["name"], node["class"]))
+        return orders
+
+    old_orders, new_orders = child_orders(original), child_orders(rebuilt)
+    directory_parents = set(directory_parents)
+    for parent in sorted(old_orders.keys() & new_orders.keys()):
+        if old_orders[parent] != new_orders[parent]:
+            old = old_orders[parent]
+            # Only a verified directory's exact name sort is exempt. Model-blob
+            # order, duplicate identity and arbitrary permutations still fail.
+            if (allow_design and parent in directory_parents and len({name for name, _ in old}) == len(old)
+                    and new_orders[parent] == sorted(old, key=lambda child: child[0])):
+                expected["order_filesystem"] += 1
+                continue
+            diff("order", parent, f"{old_orders[parent]!r} -> {new_orders[parent]!r}")
+
     for key in sorted(original.keys() - rebuilt.keys()):
         diff("missing", key)
     for key in sorted(rebuilt.keys() - original.keys()):
@@ -351,6 +354,7 @@ def compare(original, rebuilt, defaults=None, allow_design=False, duplicates=())
             diff("class", key, f"{a['class']} -> {b['class']}")
         if (a["name"], a["parent"]) != (b["name"], b["parent"]):
             diff("name_path_parent", key)
+        reference_metadata_accepted = False
         for field, category in (("source", "source"), ("attrs", "attributes"), ("tags", "tags")):
             if a[field] != b[field]:
                 if allow_design and field == "source" and a[field] is not None and b[field] == a[field].replace(b"\r\n", b"\n"):
@@ -370,17 +374,29 @@ def compare(original, rebuilt, defaults=None, allow_design=False, duplicates=())
                                 remaining.pop(name)
                                 expected["reference_metadata"] += 1
                     if a[field] == remaining:
+                        reference_metadata_accepted = True
                         continue
                 diff(category, key, repr(a[field]) + " -> " + repr(b[field]))
-        for name in KEY_PROPERTIES.get(a["class"], ()):
+        for name in sorted(a["props"].keys() | b["props"].keys()):
             old, new = a["props"].get(name), b["props"].get(name)
             if old != new:
+                # Decoded changes are accounted for above, including the exact
+                # CRLF/reference exceptions. Still check presence, XML type and
+                # raw-only changes even for these three specialized properties.
+                field = {"Source": "source", "AttributesSerialize": "attrs", "Tags": "tags"}.get(name)
+                if (name == "AttributesSerialize" and reference_metadata_accepted and new is not None and new[0] == "BinaryString"
+                        and (old is None or old[0] == "BinaryString")):
+                    continue  # Validated linker additions may create the property.
+                if field and old is not None and new is not None and old[0] == new[0] and a[field] != b[field]:
+                    continue
                 if allow_design and key == (("StarterPlayer", 0),) and name in ("CharacterWalkSpeed", "CameraMaxZoomDistance") and new is None:
                     expected["starterplayer_settings"] += 1
                     continue
                 default = defaults.get(a["class"], {}).get(name)
                 if allow_design and default is not None and (old is None and new == default or new is None and old == default):
                     expected["default_properties"] += 1
+                    if default_breakdown is not None:
+                        default_breakdown[(a["class"], name)] += 1
                     continue
                 diff("references" if (old or new or (None,))[0] == "Ref" else "properties", key, f"{name}: {old!r} -> {new!r}")
     return counts, details, expected
@@ -392,7 +408,8 @@ def default_properties(directory):
     # Binary property arrays fill absent values only when another instance of
     # that class serializes that property. Include the source as witnesses.
     children = ET.parse(directory / "original.rbxlx").getroot().findall("Item")
-    probes = [fixture.node(cls, "Default_" + cls) for cls in KEY_PROPERTIES]
+    classes = {node.get("class") for child in children for node in child.iter("Item")}
+    probes = [fixture.node(cls, "Default_" + cls) for cls in sorted(classes)]
     probes.append(fixture.node("Script", "RunContext witness", [prop("token", "RunContext", 1)]))
     for probe in probes:
         probe.set("referent", "Probe_" + probe.get("referent"))
@@ -412,6 +429,24 @@ def default_properties(directory):
 
 def kit_nodes(nodes):
     return {key: node for key, node in nodes.items() if len(key) > 1 and (key[0][0], key[1][0]) in KIT_ROOTS}
+
+
+def directory_order_parents(project, nodes):
+    """Prove directory origins from actual syncback output, not class guesses.
+
+    The generated fixture uses filename-safe directory names unchanged by Rojo.
+    Descendants inside .rbxm blobs have no corresponding directory and never
+    qualify. StarterPlayer's directory is supplied by sorted project children.
+    """
+    source = (project / "src").resolve()
+    parents = set()
+    for key in nodes:
+        if any(ordinal != 0 or "/" in name or "\\" in name or name in (".", "..") for name, ordinal in key):
+            continue
+        path = source.joinpath(*(name for name, _ in key)).resolve()
+        if path.is_relative_to(source) and path.is_dir():
+            parents.add(key)
+    return parents
 
 
 def run(args, cwd, timeout=120):
@@ -521,7 +556,13 @@ def main():
             assert not sum(kit_counts.values()), "rebuilt Kit changed: " + "\n".join(kit_details)
             actual = {key: node for key, node in rebuilt.items() if key[0][0] in SERVICES and key not in kit}
             assert not any(key[0][0] in ("Workspace", "Lighting") for key in rebuilt), "code build owns original world"
-            counts, details, expected = compare(imported_baseline, actual, defaults, allow_design=True, duplicates=duplicates)
+            breakdown = Counter()
+            counts, details, expected = compare(imported_baseline, actual, defaults, allow_design=True,
+                                               duplicates=duplicates, default_breakdown=breakdown,
+                                               directory_parents=directory_order_parents(target, imported_baseline))
+            print(f".{suffix}: default_properties exemptions by class/property (top 20 of {len(breakdown)}):")
+            for (cls, name), count in breakdown.most_common(20):
+                print(f"  {cls}.{name}: {count}")
             for line in details:
                 print(f".{suffix} {line}")
             files = sum(p.is_file() for service in SERVICES for p in (target / "src" / service).rglob("*"))

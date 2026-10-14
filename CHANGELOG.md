@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.0-beta.1 (unreleased; V1 beta candidate)
+- Require listener ownership before install-runner cleanup, allowlist child environments and fingerprint real settings; compare all import properties/sibling order with visible default exemptions and an original-place notice; retain non-PBR texture sizes and report missing Blender action slots clearly.
 - Plugin version 1.0.0-beta.1 so `claude plugin update` refreshes installed 0.1.0 copies (verified by the isolated install test).
 - Harden Net rejection reasons, warning summaries and departed-player tracking; isolate install-runner credentials/tools/config snapshots and validate cleanup PIDs. Clarify example-only Workspace/Lighting configuration.
 - Add real Rojo 7.7.1 synthetic XML/binary import fidelity acceptance for large hierarchies, UI and rigs, with measured timings/file counts, strict loss detection, validated reference/default exceptions, byte-identical input/script/managed files and intact Kit. Document CRLF rebuild normalization, StarterPlayer settings and world ownership; Studio connection/terrain/rendering acceptance remains open.

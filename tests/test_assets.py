@@ -1,4 +1,6 @@
 import importlib.util
+import ast
+from types import SimpleNamespace
 import json
 from pathlib import Path
 import tempfile
@@ -96,6 +98,29 @@ class AssetTests(unittest.TestCase):
             assets.validate_texture("ColorMap", [2048, 16], "sRGB", 4096)
         with self.assertRaisesRegex(ValueError, "limit 8"):
             assets.validate_texture("NormalMap", [16, 16], "Non-Color", 8)
+
+    def test_non_pbr_texture_keeps_arbitrary_dimensions_and_size_budget(self):
+        assets.validate_texture("image legacy", [300, 200], "sRGB", 1024)
+        with self.assertRaisesRegex(ValueError, "texture budget exceeded"):
+            assets.validate_texture("image legacy", [300, 200], "sRGB", 256)
+        for size in ([0, 200], [True, 200], [300.5, 200]):
+            with self.subTest(size=size), self.assertRaisesRegex(ValueError, "positive integer"):
+                assets.validate_texture("image legacy", size, "sRGB", 1024)
+
+    def test_modern_animation_without_action_slot_has_clear_error(self):
+        # Load only the real functions; export.py's top level requires Blender
+        # and performs exports. This regression needs no native bpy process.
+        tree = ast.parse((ROOT / "assets/blender/export.py").read_text())
+        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                     and node.name in ("animation_evidence", "fcurves")]
+        for version in ((4, 4, 0), (5, 2, 0)):
+            namespace = {"bpy": SimpleNamespace(app=SimpleNamespace(version=version))}
+            exec(compile(ast.Module(body=functions, type_ignores=[]), "export.py", "exec"), namespace)
+            rig = SimpleNamespace(name="FixtureRig", animation_data=SimpleNamespace(
+                action=SimpleNamespace(layers=[SimpleNamespace(strips=[SimpleNamespace(
+                    channelbags=[SimpleNamespace(slot_handle=1, fcurves=[])])])]), action_slot=None, nla_tracks=[]))
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "assigned action slot: FixtureRig"):
+                namespace["animation_evidence"]([rig], {"animation": True}, None)
 
     def test_skin_budgets_count_positive_deform_weights(self):
         self.assertEqual(assets.validate_skin_budget(3, [[1, 0], [.5, .5], [.25] * 4]), 4)

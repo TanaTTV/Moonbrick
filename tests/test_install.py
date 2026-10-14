@@ -1,5 +1,8 @@
 """Safety and stale-cache regressions for the isolated install acceptance runner."""
 import importlib.util
+from collections import Counter
+from contextlib import redirect_stdout
+import io
 import json
 import os
 import shutil
@@ -83,7 +86,9 @@ class InstallTests(unittest.TestCase):
 
     def test_credentials_actions_and_git_location_do_not_reach_children(self):
         secrets = {key: "secret" for key in ("GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN",
-                   "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_CACHE_URL", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+                   "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_CACHE_URL", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+                   "NPM_TOKEN", "SSH_AUTH_SOCK", "GIT_ASKPASS", "GIT_EXEC_PATH", "UNRECOGNIZED_SECRET")}
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, secrets):
             env = install.isolated_env(Path(tmp))
             for key in secrets:
@@ -95,10 +100,10 @@ class InstallTests(unittest.TestCase):
             self.assertIn(Path.home() / ".claude/plugins", install.protected_plugin_paths())
 
     def test_invalid_cleanup_pid_never_reaches_kill(self):
-        with patch.object(install.os, "killpg", create=True) as kill, patch.object(install.subprocess, "run") as run:
+        with patch.object(install.os, "kill") as kill, patch.object(install.subprocess, "run") as run:
             for pid in (None, True, False, -1, 0, 1, "123", 2.0):
                 with self.assertRaisesRegex(ValueError, "invalid owned process PID"):
-                    install.stop_owned_process(pid)
+                    install.stop_owned_process(pid, 34872)
             kill.assert_not_called()
             run.assert_not_called()
 
@@ -120,14 +125,83 @@ class InstallTests(unittest.TestCase):
                     runner.hook_project()
                 stop.assert_not_called()
 
-    def test_known_launch_requires_matching_pid_or_descendant(self):
-        install.validate_owned_pid(123, 123)
-        with patch.object(install.subprocess, "run") as run:
-            run.return_value.stdout = "123\n"
-            install.validate_owned_pid(456, 123)
-            run.return_value.stdout = "1\n"
-            with self.assertRaisesRegex(ValueError, "outside launched process tree"):
-                install.validate_owned_pid(456, 123)
+    def test_cleanup_refuses_mismatched_listener_pid_without_killing(self):
+        with patch.object(install.dev_server, "listener_pid", return_value=456) as listener, \
+                patch.object(install.dev_server, "listener_owned", return_value=False), \
+                patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+            with self.assertRaisesRegex(ValueError, "does not own"):
+                install.stop_owned_process(123, 34872)
+            listener.assert_called_once_with(34872)
+            run.assert_not_called()
+            kill.assert_not_called()
+
+    def test_cleanup_accepts_matching_listener_pid(self):
+        with patch.object(install.dev_server, "listener_pid", return_value=123), \
+                patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+            install.stop_owned_process(123, 34872)
+            if os.name == "nt":
+                self.assertEqual(run.call_args.args[0], ["taskkill", "/PID", "123", "/T", "/F"])
+                kill.assert_not_called()
+            else:
+                kill.assert_called_once_with(123, 15)
+                run.assert_not_called()
+
+    def test_cleanup_refuses_unproven_listener_or_invalid_port(self):
+        with patch.object(install.dev_server, "listener_pid", side_effect=ValueError("no listener")), \
+                patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+            for port in (None, True, "34872", 0, 65536, 34872):
+                with self.assertRaises(ValueError):
+                    install.stop_owned_process(123, port)
+            run.assert_not_called()
+            kill.assert_not_called()
+
+    def test_rokit_shim_descendant_only_kills_proven_listener(self):
+        with patch.object(install.dev_server, "listener_pid", return_value=456), \
+                patch.object(install.dev_server, "listener_owned", return_value=True) as owns, \
+                patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+            install.stop_owned_process(123, 34872)
+            owns.assert_called_once_with(34872, 123)
+            if os.name == "nt":
+                self.assertEqual(run.call_args.args[0], ["taskkill", "/PID", "456", "/T", "/F"])
+            else:
+                kill.assert_called_once_with(456, 15)
+
+    def test_listener_change_during_validation_never_reaches_kill(self):
+        with patch.object(install.dev_server, "listener_pid", side_effect=[123, 456]), \
+                patch.object(install.subprocess, "run") as run, patch.object(install.os, "kill") as kill:
+            with self.assertRaisesRegex(ValueError, "listener changed"):
+                install.stop_owned_process(123, 34872)
+            run.assert_not_called()
+            kill.assert_not_called()
+
+    def test_child_env_preserves_only_platform_runtime_basics(self):
+        inherited = {key: "runtime" for key in ("SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "SystemDrive",
+                     "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "NUMBER_OF_PROCESSORS",
+                     "PROCESSOR_ARCHITECTURE", "OS", "LANG", "LC_ALL", "TERM", "TZ")}
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, inherited, clear=True):
+            env = install.isolated_env(Path(tmp))
+        for key, value in inherited.items():
+            self.assertEqual({name.upper(): item for name, item in env.items()}[key.upper()], value)
+
+    def test_settings_guard_detects_content_size_and_mtime_changes_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            self.assertEqual(install.settings_snapshot(path), {"exists": False})
+            path.write_bytes(b"abcd")
+            before = install.settings_snapshot(path)
+            stat = path.stat()
+            self.assertEqual(install.settings_snapshot(path), before)
+            self.assertEqual(path.read_bytes(), b"abcd")
+            path.write_bytes(b"efgh")
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            after = install.settings_snapshot(path)
+            self.assertEqual(after["size"], before["size"])
+            self.assertEqual(after["mtime_ns"], before["mtime_ns"])
+            self.assertNotEqual(after["sha256"], before["sha256"])
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            self.assertNotEqual(install.settings_snapshot(path)["mtime_ns"], before["mtime_ns"])
+            path.write_bytes(b"longer")
+            self.assertNotEqual(install.settings_snapshot(path)["size"], before["size"])
 
     def test_authentication_token_is_scoped_to_one_command(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"CI": "1", "GITHUB_TOKEN": "test-token"}):
@@ -180,6 +254,126 @@ class InstallTests(unittest.TestCase):
             stat = path.stat()
             os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
             self.assertNotEqual(before, install.snapshot(root))
+
+
+class ImportReviewRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("review_fidelity", ROOT / "scripts/test-import-fidelity.py")
+        cls.fidelity = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.fidelity)
+
+    def node(self, name="Test", cls="Folder", props=None):
+        return {"class": cls, "name": name, "parent": (), "source": None,
+                "attrs": {}, "tags": (), "props": props or {}}
+
+    def test_unlisted_property_change_addition_and_removal_are_unexpected(self):
+        key = (("Test", 0),)
+        old = {key: self.node(props={"Unlisted": ("string", "keep")})}
+        for props in ({"Unlisted": ("string", "changed")}, {},
+                      {"Unlisted": ("string", "keep"), "Extra": ("bool", "false")}):
+            with self.subTest(props=props):
+                counts, _, _ = self.fidelity.compare(old, {key: self.node(props=props)}, allow_design=True)
+                self.assertEqual(counts["properties"], 1)
+
+    def test_special_properties_still_check_presence_and_xml_type(self):
+        key = (("Test", 0),)
+        for name, value in (("Source", ("ProtectedString", "")),
+                            ("AttributesSerialize", ("BinaryString", b"")), ("Tags", ("BinaryString", b""))):
+            with self.subTest(name=name):
+                old = {key: self.node()}
+                new = {key: self.node(props={name: value})}
+                counts, _, _ = self.fidelity.compare(old, new, allow_design=True)
+                self.assertEqual(counts["properties"], 1)
+                counts, _, expected = self.fidelity.compare(old, new, {"Folder": {name: value}}, allow_design=True)
+                self.assertEqual(counts["properties"], 0)
+                self.assertEqual(expected["default_properties"], 1)
+                changed = {key: self.node(props={name: ("string", "")})}
+                counts, _, _ = self.fidelity.compare(new, changed, allow_design=True)
+                self.assertEqual(counts["properties"], 1)
+
+    def test_validated_reference_metadata_can_create_attributes_property(self):
+        model, part = (("Model", 0),), (("Model", 0), ("Part", 0))
+        old = {model: self.node("Model", "Model", {"PrimaryPart": ("Ref", part)}),
+               part: self.node("Part", "Part")}
+        new = {key: dict(value, attrs=dict(value["attrs"]), props=dict(value["props"])) for key, value in old.items()}
+        identifier = (2, b"0123456789abcdef0123456789abcdef")
+        new[part]["attrs"]["Rojo_Id"] = identifier
+        new[model]["attrs"]["Rojo_Target_PrimaryPart"] = identifier
+        for key in new:
+            new[key]["props"]["AttributesSerialize"] = ("BinaryString", b"validated metadata")
+        counts, _, expected = self.fidelity.compare(old, new, allow_design=True)
+        self.assertEqual(sum(counts.values()), 0)
+        self.assertEqual(expected["reference_metadata"], 2)
+        new[part]["attrs"]["Unrelated"] = (2, b"fail")
+        counts, _, _ = self.fidelity.compare(old, new, allow_design=True)
+        self.assertGreater(counts["attributes"], 0)
+
+    def test_distinct_sibling_order_changes_are_unexpected(self):
+        keys = [((name, 0),) for name in ("A", "B")]
+        old = {key: self.node(key[0][0]) for key in keys}
+        new = {key: old[key] for key in reversed(keys)}
+        counts, _, _ = self.fidelity.compare(old, new, allow_design=True)
+        self.assertEqual(counts["order"], 1)
+        self.assertEqual(sum(counts.values()), 1)
+
+    def test_default_breakdown_counts_exact_class_property_only(self):
+        key = (("Test", 0),)
+        default = ("bool", "false")
+        tally = Counter()
+        counts, _, expected = self.fidelity.compare({key: self.node()},
+            {key: self.node(props={"Unlisted": default})}, {"Folder": {"Unlisted": default}},
+            allow_design=True, default_breakdown=tally)
+        self.assertEqual(sum(counts.values()), 0)
+        self.assertEqual(expected["default_properties"], 1)
+        self.assertEqual(tally, Counter({("Folder", "Unlisted"): 1}))
+        counts, _, _ = self.fidelity.compare({key: self.node()},
+            {key: self.node(props={"Unlisted": ("bool", "true")})}, {"Folder": {"Unlisted": default}},
+            allow_design=True)
+        self.assertEqual(counts["properties"], 1)
+
+    def test_only_exact_directory_name_sort_can_exempt_order(self):
+        parent = (("Parent", 0),)
+        keys = [parent + ((name, 0),) for name in ("C", "A", "B")]
+        old = {key: self.node(key[-1][0]) for key in keys}
+        sorted_nodes = {key: old[key] for key in sorted(keys)}
+        counts, _, expected = self.fidelity.compare(old, sorted_nodes, allow_design=True,
+                                                   directory_parents={parent})
+        self.assertEqual(counts["order"], 0)
+        self.assertEqual(expected["order_filesystem"], 1)
+        counts, _, _ = self.fidelity.compare(old, sorted_nodes, allow_design=True)
+        self.assertEqual(counts["order"], 1, "model-blob/unknown origins must not qualify")
+        reversed_nodes = {key: old[key] for key in reversed(sorted(keys))}
+        counts, _, _ = self.fidelity.compare(old, reversed_nodes, allow_design=True,
+                                            directory_parents={parent})
+        self.assertEqual(counts["order"], 1)
+
+    def test_order_origins_exclude_model_blobs_and_duplicate_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "src/Parent/Directory").mkdir(parents=True)
+            (project / "src/Parent/Model.rbxm").write_bytes(b"fixture")
+            keys = [(("Parent", 0), (name, ordinal)) for name, ordinal in
+                    (("Directory", 0), ("Model", 0), ("Directory", 1))]
+            origins = self.fidelity.directory_order_parents(project, {key: {} for key in keys})
+            self.assertEqual(origins, {keys[0]})
+
+    def test_successful_import_prints_original_place_notice(self):
+        project = self.fidelity.load_project()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "game"
+            place = Path(tmp) / "place.rbxl"
+            place.write_bytes(b"fixture")
+            project.new_project(root, "Notice test")
+            def fake_rojo(*args, cwd):
+                if args[1] == "syncback":
+                    (cwd / "src/ServerScriptService/Test.server.luau").write_text("print('fixture')")
+                elif args[1] == "sourcemap":
+                    (cwd / "sourcemap.json").write_text("{}")
+            out = io.StringIO()
+            with patch.object(project, "run", fake_rojo), redirect_stdout(out):
+                project.import_place(root, place)
+            self.assertIn("Workspace, Lighting and StarterPlayer settings stay in the original place (not imported)", out.getvalue())
 
 
 if __name__ == "__main__":
