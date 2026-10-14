@@ -6,6 +6,7 @@ checking/building and the positive Rojo hook test; it is not full acceptance.
 """
 import argparse
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -21,6 +22,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENTS = ("skills", "hooks", "scripts", "template", "luau", ".claude-plugin")
+_server_spec = importlib.util.spec_from_file_location("install_dev_server", ROOT / "scripts/dev-server.py")
+dev_server = importlib.util.module_from_spec(_server_spec)
+_server_spec.loader.exec_module(dev_server)
 
 
 def require(condition, message):
@@ -77,12 +81,12 @@ def verify_copy(source, installed):
 def isolated_env(root):
     home = root / "home"
     home.mkdir(parents=True)
-    env = dict(os.environ)
-    # Do not inherit a real tool wrapper or a real cache/config override.
-    for key in list(env):
-        if key.startswith(("CLAUDE_", "ROKIT_", "GIT_CONFIG_", "ACTIONS_")) or key in (
-                "BASH_ENV", "ENV", "GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-            del env[key]
+    # Allow only OS/runtime basics. Credentials, startup scripts and tool/config
+    # overrides must never reach plugin, Git, Bash or downloaded tool children.
+    allowed = {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "SYSTEMDRIVE",
+               "PROGRAMDATA", "NUMBER_OF_PROCESSORS", "OS", "LANG", "TERM", "TZ"}
+    env = {key: value for key, value in os.environ.items()
+           if key.upper() in allowed or key.upper().startswith(("PROGRAMFILES", "PROCESSOR_", "LC_"))}
     # No rokit stub: setup-tools.sh bootstraps Rokit only when `command -v rokit` finds nothing.
     tool_names = ("rojo", "luau-lsp", "selene", "stylua")
     guard = root / "tool-guard"
@@ -124,38 +128,26 @@ def isolated_env(root):
     return env
 
 
-def validate_owned_pid(pid, launched_pid=None):
+def validate_owned_pid(pid, port):
     require(type(pid) is int and pid > 1, "refusing invalid owned process PID")
-    if launched_pid is None:
-        # The detached hook helper owns the launch; this runner has no Popen PID.
-        return
-    require(type(launched_pid) is int and launched_pid > 1, "invalid launched process PID")
-    ancestor = pid
-    for _ in range(64):
-        if ancestor == launched_pid:
-            return
-        if ancestor <= 1:
-            break
-        if os.name == "nt":
-            command = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {ancestor}').ParentProcessId"
-            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                    capture_output=True, text=True, timeout=20, check=True)
-        else:
-            result = subprocess.run(["ps", "-o", "ppid=", "-p", str(ancestor)],
-                                    capture_output=True, text=True, timeout=3, check=True)
-        value = result.stdout.strip()
-        if not value.isdigit():
-            break
-        ancestor = int(value)
-    raise ValueError("refusing PID outside launched process tree")
+    require(type(port) is int and 1024 <= port <= 65535, "refusing invalid owned listener port")
+    listener = dev_server.listener_pid(port)
+    # Rokit's rojo.exe shim records its launch PID, while the real rojo.exe
+    # child owns the socket. Prove that relationship using the startup helper.
+    require(listener == pid or dev_server.listener_owned(port, pid),
+            "refusing PID that does not own the recorded loopback listener")
+    require(dev_server.listener_pid(port) == listener, "loopback listener changed during ownership check")
+    return listener
 
 
-def stop_owned_process(pid, launched_pid=None):
-    validate_owned_pid(pid, launched_pid)
+def stop_owned_process(pid, port):
+    # Recheck immediately before killing; marker files alone are not proof.
+    listener = validate_owned_pid(pid, port)
+    # Kill the proven listener, never a marker-supplied ancestor's whole tree.
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=True, timeout=30)
+        subprocess.run(["taskkill", "/PID", str(listener), "/T", "/F"], check=True, timeout=30)
     else:
-        os.killpg(pid, 15)
+        os.kill(listener, 15)
 
 
 def protected_plugin_paths():
@@ -165,6 +157,19 @@ def protected_plugin_paths():
         if configured.resolve() != paths[0].resolve():
             paths.append(configured)
     return paths
+
+
+def settings_snapshot(path):
+    """Read-only protection of settings bytes, size and mtime; never print bytes.
+
+    ~/.claude.json is intentionally excluded: other running Claude sessions
+    continually update its session state, independently of this isolated test.
+    """
+    if not path.exists():
+        return {"exists": False}
+    stat = path.stat()
+    return {"exists": True, "mtime_ns": stat.st_mtime_ns, "size": stat.st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
 class Acceptance:
@@ -254,6 +259,10 @@ class Acceptance:
             # Shared CI runners hit GitHub's unauthenticated rate limit (403). Bootstrap Rokit with the
             # installed copy's verified fetcher and authenticate it inside the isolated cache only.
             self.run([sys.executable, str(self.copy / "scripts/fetch-rokit.py")], timeout=300)
+            # Rokit 1.2.0 `authenticate github --help` offers only --token;
+            # no stdin/env token input exists. Bash expands this scoped env var
+            # into Rokit's argv (visible to local process inspection). Keep it
+            # out of printed argv and all other children; remove when supported.
             self.run([self.bash, "-c", 'export PATH="$HOME/.rokit/bin:$PATH"; rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify'],
                      env=dict(self.env, GITHUB_TOKEN=os.environ["GITHUB_TOKEN"]))
         self.run(args, timeout=600)
@@ -317,8 +326,8 @@ class Acceptance:
             self.hook_commands(self.game)
             require(marker.is_file(), "hook exited without establishing owned Rojo startup")
             state = json.loads(marker.read_text())
-            validate_owned_pid(state["pid"])
             require(Path(state["project"]).resolve() == self.game.resolve() and state["port"] == port, "hook claimed wrong project/port")
+            validate_owned_pid(state["pid"], port)
             # Use the installed probe/decoder. Local loopback only; no Studio or publishing.
             self.run([sys.executable, "-c",
                       'import importlib.util,json,sys; s=importlib.util.spec_from_file_location("server",sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); i=m.probe(int(sys.argv[2])); assert i["sessionId"]==sys.argv[3]; assert i["projectName"]==sys.argv[4]; print("Verified owned hook Rojo session")',
@@ -331,7 +340,7 @@ class Acceptance:
                 state = json.loads(marker.read_text())
                 require(Path(state["project"]).resolve() == self.game.resolve() and state["port"] == port, "refusing to stop an unowned process")
                 pid = state["pid"]
-                validate_owned_pid(pid)
+                validate_owned_pid(pid, port)
             else:
                 # The shipped helper reports its own PID if startup validation
                 # fails before writing the marker. Never infer ownership merely
@@ -340,7 +349,7 @@ class Acceptance:
                 if failed:
                     pid = int(failed[1])
             if pid is not None:
-                stop_owned_process(pid)
+                stop_owned_process(pid, port)
                 # Wait for the listener to close before deleting its project/logs.
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
@@ -363,6 +372,10 @@ def main():
     rows = []
     protected = protected_plugin_paths()
     before = {path: snapshot(path) for path in protected}
+    settings_before = {path.parent / "settings.json": settings_snapshot(path.parent / "settings.json")
+                       for path in protected}
+    for path, state in settings_before.items():
+        print(f"Real settings BEFORE ({path}): {json.dumps(state, sort_keys=True)}", flush=True)
     for path, state in before.items():
         print(f"Real plugins BEFORE ({path}): root_mtime_ns={state.get('root_mtime_ns')}, entries={len(state.get('entries', {}))}, sha256={fingerprint(state)}", flush=True)
     try:
@@ -400,6 +413,10 @@ def main():
         print(f"FAIL: {error}", flush=True)
         rows.append(("Prerequisites / cleanup", "FAIL"))
     finally:
+        for path, previous in settings_before.items():
+            after = settings_snapshot(path)
+            print(f"Real settings AFTER ({path}): {json.dumps(after, sort_keys=True)}", flush=True)
+            rows.append((f"Real {path} mtime/size/sha256 unchanged", "PASS" if previous == after else "FAIL"))
         for path, previous in before.items():
             after = snapshot(path)
             print(f"Real plugins AFTER ({path}): root_mtime_ns={after.get('root_mtime_ns')}, entries={len(after.get('entries', {}))}, sha256={fingerprint(after)}", flush=True)

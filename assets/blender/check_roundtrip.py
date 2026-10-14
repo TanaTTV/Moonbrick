@@ -23,6 +23,11 @@ if "crystal" in evidence:
     meshes = read("crystal")
     assert len(meshes) == 1 and len(meshes[0].data.polygons) > 0
     assert abs(meshes[0].dimensions.z - 1.2) < .001, str(meshes[0].dimensions)
+    assert evidence["crystal"]["textures"] == 1
+    tree = material_node_tree(meshes[0].data.materials[0], bpy.app.version)
+    images = [node.image for node in tree.nodes if node.type == "TEX_IMAGE" and node.image]
+    assert images and list(images[0].size) == [300, 200]
+    print("PASS: non-PBR 300x200 texture exports and survives native FBX reimport")
     print("PASS: static FBX native reimport preserves geometry and 1.2m scale")
     meshes = read("rock")
     assert len(meshes) == 1 and len(meshes[0].data.polygons) > 0

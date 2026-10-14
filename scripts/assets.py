@@ -17,7 +17,9 @@ PBR_MAPS = {"ColorMap": "sRGB", "NormalMap": "Non-Color", "RoughnessMap": "Non-C
 
 def validate_texture(role: str, size, colorspace: str, budget: int):
     """Validate image metadata without Blender; PBR maps use a local 1024px ceiling."""
-    if len(size) != 2 or any(type(n) != int or n < 1 or n & (n - 1) for n in size):
+    if len(size) != 2 or any(type(n) != int or n < 1 for n in size):
+        raise ValueError(f"texture must have positive integer dimensions: {role} ({size})")
+    if role in PBR_MAPS and any(n & (n - 1) for n in size):
         raise ValueError(f"texture must have power-of-two dimensions: {role} ({size})")
     limit = min(budget, 1024) if role in PBR_MAPS else budget
     if max(size) > limit:
