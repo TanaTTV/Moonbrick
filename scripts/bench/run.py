@@ -151,8 +151,52 @@ def prepare(batch):
     for name, path in spec['tools'].items():
         spec.setdefault('tool_versions', {})[name] = command([path, '--version'])
         spec.setdefault('tool_hashes', {})[name] = digest(Path(path))
+    spec['selene_std'] = str(prepare_selene_std(batch, spec['tools']['selene']))
     save(batch / 'setup.json', spec)
     return spec
+
+
+def prepare_selene_std(batch, executable):
+    """Capture a real generated Roblox std, then prove it works without user caches."""
+    target = batch / 'roblox.yml'
+    metadata = batch / 'selene-std.json'
+    evidence = json.loads(metadata.read_text(encoding='utf-8')) if metadata.is_file() else {'attempts': []}
+    if target.is_file() and evidence.get('sha256') and digest(target) != evidence['sha256']:
+        raise ValueError('captured Selene std hash mismatch; original metadata unchanged')
+    if not target.is_file():
+        # The template checker uses Selene's floating user cache. Read it only;
+        # never regenerate/update that cache or the user's project/configuration.
+        cache_root = Path(os.environ.get('LOCALAPPDATA', Path.home() / '.cache'))
+        cached = cache_root / 'selene/roblox.yml'
+        if cached.is_file() and cached.stat().st_size:
+            shutil.copyfile(cached, target)
+            evidence['attempts'].append({'source': str(cached), 'sha256': digest(cached), 'transport': 'readonly cache copy'})
+        else:
+            with tempfile.TemporaryDirectory(prefix='std-generate-', dir=batch) as directory:
+                attempt = command([executable, 'generate-roblox-std'], cwd=directory)
+                evidence['attempts'].append(attempt)
+                generated = Path(directory) / 'roblox.yml'
+                if attempt['returncode'] == 0 and generated.is_file():
+                    shutil.copyfile(generated, target)
+    if not target.is_file() or not target.stat().st_size:
+        save(batch / 'selene-std.json', evidence)
+        raise RuntimeError('Selene Roblox std unavailable; see selene-std.json (no provider call)')
+    with tempfile.TemporaryDirectory(prefix='std-verify-', dir=batch) as directory:
+        folder = Path(directory)
+        shutil.copyfile(target, folder / 'roblox.yml')
+        (folder / 'selene.toml').write_text('std = "roblox"\nroblox-std-source = "pinned"\n', encoding='utf-8')
+        (folder / 'probe.luau').write_text('local part = Instance.new("Part")\npart.Parent = workspace\n', encoding='utf-8')
+        env = dict(os.environ)
+        for name in ('HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME'):
+            env[name] = str(folder / 'empty-home')
+        evidence['verification'] = command([executable, '--display-style=quiet', 'probe.luau'], cwd=folder, env=env)
+    evidence.update(sha256=digest(target), bytes=target.stat().st_size,
+                    success=evidence['verification']['returncode'] == 0)
+    save(batch / 'selene-std.json', evidence)
+    if not evidence['success']:
+        raise RuntimeError('Pinned Selene std verification failed; see selene-std.json')
+    print(f'Selene std prepared: {target} sha256={evidence["sha256"]}', flush=True)
+    return target
 
 
 def isolated_env(temp, binaries):
@@ -228,6 +272,7 @@ def run_one(batch, spec, condition, repetition, model, remaining):
     sandbox = temp / 'sandbox.json'
     save(sandbox, {'project': str(project), 'root': str(ROOT), 'condition': condition,
                    'artifact': str(out), 'definitions': str(batch / 'globalTypes.d.luau'),
+                   'selene_std': spec['selene_std'],
                    'tools': spec['tools']})
     save(temp / 'empty-mcp.json', {'mcpServers': {}})
     hook = shlex.join([Path(sys.executable).as_posix(), (HERE / 'sandbox.py').as_posix(), 'hook', sandbox.as_posix()])
@@ -303,6 +348,10 @@ def run_one(batch, spec, condition, repetition, model, remaining):
                                'agents_after': command(spec['cli'] + ['agents', '--json', '--all'])})
     save(out / 'inventory.json', {p.relative_to(project).as_posix(): {'bytes': p.stat().st_size, 'sha256': digest(p)}
                                 for p in project.rglob('*') if p.is_file() and not p.is_symlink()})
+    # Archive before grading, including failures/ambiguous projects. Never rely
+    # on the disposable session or scoring directory surviving orchestration.
+    from sandbox import preserve_project
+    preserve_project(project, out, ROOT)
     # Independent checks even when the model hit max turns or returned an error.
     scoring = command([sys.executable, str(HERE / 'sandbox.py'), 'check', str(sandbox), str(project)], cwd=project, env=env, timeout=180)
     save(out / 'scoring-process.json', scoring)
@@ -342,13 +391,69 @@ def summarize(batch, rows):
     save(batch / 'medians.json', medians)
 
 
+def rescore(batch):
+    """No CLI/provider/authentication setup: restore captured files and grade."""
+    from sandbox import restore_project, check
+    from report import regenerate_summaries
+    if not batch.is_relative_to(ROOT / '.artifacts/bench'):
+        raise ValueError('rescore batch must stay under this worktree .artifacts/bench')
+    runs = [p.parent for p in sorted(batch.glob('*/summary.json'))
+            if json.loads(p.read_text(encoding='utf-8')).get('condition') in ('A', 'B')]
+    if not runs:
+        raise ValueError('no captured benchmark runs to rescore')
+    missing = [p.name for p in runs if not (p / 'project-manifest.json').is_file() or not (p / 'project-source').is_dir()]
+    if missing:
+        raise ValueError('cannot rescore: preserved projects unavailable for ' + ', '.join(missing) + '; original scores unchanged')
+    spec = json.loads((batch / 'setup.json').read_text(encoding='utf-8'))
+    # Captured binaries/definitions are required, rather than silently substituting
+    # newly installed tools or downloading today's type definitions.
+    for name, executable in spec['tools'].items():
+        if not Path(executable).is_file() or digest(Path(executable)) != spec['tool_hashes'][name]:
+            raise ValueError(f'captured tool unavailable or changed: {name}')
+    definitions = batch / 'globalTypes.d.luau'
+    metadata = json.loads((batch / 'definitions.json').read_text(encoding='utf-8'))
+    if not definitions.is_file() or digest(definitions) != metadata['sha256']:
+        raise ValueError('captured type definitions unavailable or changed')
+    std = prepare_selene_std(batch, spec['tools']['selene'])
+    round_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
+    staged = []
+    for artifact in runs:
+        output = artifact / 'rescores' / round_id
+        output.mkdir(parents=True)
+        with tempfile.TemporaryDirectory(prefix='restore-', dir=output) as directory:
+            project = Path(directory) / 'project'
+            restore_project(artifact, project, ROOT)
+            config = {'project': str(project), 'root': str(ROOT), 'artifact': str(output),
+                      'tools': spec['tools'], 'definitions': str(definitions), 'selene_std': str(std)}
+            check(config, project)
+        staged.append((artifact, output))
+    # Publish only after every restoration/check completes; retain all old scores.
+    for artifact, output in staged:
+        if (artifact / 'score.json').is_file():
+            shutil.copyfile(artifact / 'score.json', output / 'previous-score.json')
+        shutil.copyfile(output / 'score.json', artifact / 'score.json')
+    save(batch / 'rescore.json', {'round': round_id, 'provider_calls': 0,
+                                 'grader_sha256': digest(HERE / 'sandbox.py'),
+                                 'runs': [p.name for p in runs]})
+    regenerate_summaries(batch)
+    print(f'Rescored {len(runs)} preserved projects; summary/medians regenerated; provider calls: 0')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--run', action='store_true', help='Execute the authorized six sequential provider sessions')
-    parser.add_argument('--prepare', action='store_true', help='Capture no-model preflight')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--run', action='store_true', help='Execute the authorized six sequential provider sessions')
+    modes.add_argument('--prepare', action='store_true', help='Capture no-model preflight')
+    modes.add_argument('--rescore', type=Path, help='Re-score preserved projects; never calls a provider')
     parser.add_argument('--approved-shared-quota', action='store_true', help='Explicit user approval for existing Claude sessions')
     parser.add_argument('--batch', type=Path)
     args = parser.parse_args()
+    if args.rescore:
+        try:
+            rescore(args.rescore.resolve())
+        except (ValueError, RuntimeError) as e:
+            parser.error(str(e))
+        return
     batch = args.batch or ROOT / '.artifacts/bench' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     batch = batch.resolve()
     if not batch.is_relative_to(ROOT / '.artifacts/bench'):

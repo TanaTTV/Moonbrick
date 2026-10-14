@@ -1,0 +1,7 @@
+condition,repetition,status,model,input_tokens,output_tokens,cache_read_input_tokens,cache_creation_input_tokens,total_cost_usd,num_turns,duration_ms,wall_seconds,build,strict_types,selene,server_authority_static,persistence_static,coin_touch_static,hud_static,all_criteria,artifact
+A,1,success,claude-sonnet-5-5,24,6939,306785,40372,0.26160449999999996,23,62419,66.14182760000404,True,True,False,False,True,True,False,False,.artifacts\bench\20261014T092235Z\A1
+A,2,success,claude-sonnet-5-5,14,5852,114750,19108,0.14645500000000003,13,47163,48.27268819999881,True,True,False,True,True,True,True,False,.artifacts\bench\20261014T092235Z\A2
+A,3,success,claude-sonnet-5-5,14,5951,100848,16189,0.1343788,11,49640,50.574311500000476,True,True,False,False,True,False,True,False,.artifacts\bench\20261014T092235Z\A3
+B,1,success,claude-sonnet-5-5,18,8308,128909,26475,0.2019069,20,66180,67.92323089999991,True,True,False,True,True,True,True,False,.artifacts\bench\20261014T092235Z\B1
+B,2,success,claude-sonnet-5-5,12,8984,94555,20899,0.1829155,15,68780,69.4392979999975,True,True,False,True,True,True,True,False,.artifacts\bench\20261014T092235Z\B2
+B,3,success,claude-sonnet-5-5,18,8266,131775,20274,0.17696950000000003,16,67305,68.09557199999836,True,True,False,True,True,True,True,False,.artifacts\bench\20261014T092235Z\B3
