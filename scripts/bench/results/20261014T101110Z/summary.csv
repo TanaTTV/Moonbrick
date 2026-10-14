@@ -1,0 +1,4 @@
+condition,repetition,status,model,input_tokens,output_tokens,cache_read_input_tokens,cache_creation_input_tokens,total_cost_usd,num_turns,duration_ms,wall_seconds,build,strict_types,selene,server_authority_static,persistence_static,coin_touch_static,hud_static,all_criteria,artifact
+E,1,success,claude-sonnet-5-5,30,7950,375276,35714,0.2599436,26,94741,95.60603749999427,True,True,True,True,True,True,True,True,.artifacts\bench\20261014T101110Z\E1
+E,2,success,claude-sonnet-5-5,42,10616,618611,45183,0.3488371,39,95567,96.46525039999688,True,True,True,True,True,True,True,True,.artifacts\bench\20261014T101110Z\E2
+E,3,success,claude-sonnet-5-5,32,8510,435473,41010,0.29275130000000005,27,83974,84.86440950000542,True,True,True,True,True,True,True,True,.artifacts\bench\20261014T101110Z\E3
