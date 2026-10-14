@@ -67,7 +67,7 @@ The Studio test bundle never parents instances to the user's place, installs gam
 - [ ] Blender asset Studio import/rendering acceptance; local static/rig/animation/PBR native round-trips passed, including budgets and failure cleanup. FBX bone/clip mapping and SurfaceAppearance rendering in Roblox remain unvalidated.
 - [ ] Validate rendered example gameplay, touch/gamepad, server authority under adversarial network requests and target-device performance.
 - [x] Controlled tree benchmark: 22,883 vs 2,480 output chars; medians 34 vs 81 ms. Compact output reduced characters but increased call latency. Exact Claude tokens/cost were not measured.
-- [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting.
+- [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting: [confined Claude coin-pickup harness/report](BENCHMARK.md) prepared; real-tool grader fixture passed, provider runs blocked by the shared-quota guard pending approval. No token/cost/efficiency or baseline plugin-isolation result is claimed.
 - [ ] Approval for release version/tag, merge and publication.
 
 ## PR #1 QA and stability follow-ups (2026-10-13)

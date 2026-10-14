@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.0-beta.1 (unreleased; V1 beta candidate)
+- Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; local grader checks pass, provider comparison remains blocked by the shared-quota guard pending approval.
 - Plugin version 1.0.0-beta.1 so `claude plugin update` refreshes installed 0.1.0 copies (verified by the isolated install test).
 - Harden Net rejection reasons, warning summaries and departed-player tracking; isolate install-runner credentials/tools/config snapshots and validate cleanup PIDs. Clarify example-only Workspace/Lighting configuration.
 - Add real Rojo 7.7.1 synthetic XML/binary import fidelity acceptance for large hierarchies, UI and rigs, with measured timings/file counts, strict loss detection, validated reference/default exceptions, byte-identical input/script/managed files and intact Kit. Document CRLF rebuild normalization, StarterPlayer settings and world ownership; Studio connection/terrain/rendering acceptance remains open.
