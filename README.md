@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-ff6b6b?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0.0--beta.1-ff6b6b?style=flat-square">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=flat-square">
   <img alt="Luau" src="https://img.shields.io/badge/Luau-strict-00a2ff?style=flat-square">
   <img alt="Rojo" src="https://img.shields.io/badge/Rojo-7.7-e13835?style=flat-square">
@@ -62,18 +62,16 @@ claude plugin list --json
 
 The list must show `moonbrick@moonbrick` with `enabled: true`. In a Claude Code session you can also add the published marketplace with `/plugin marketplace add TanaTTV/Moonbrick`, then `/plugin install moonbrick@moonbrick`. The acceptance test uses a local checkout, not the remote marketplace.
 
-**Upgrading an installed 0.1.0 copy to the current checkout:** add the desired checkout as the same marketplace source, refresh it, then uninstall/reinstall:
+**Upgrading an installed 0.1.0 copy:** point the same marketplace at the new source, refresh it, then update:
 
 ```bash
-claude plugin marketplace add /absolute/path/to/Moonbrick
+claude plugin marketplace add /absolute/path/to/Moonbrick   # or keep TanaTTV/Moonbrick
 claude plugin marketplace update moonbrick
 claude plugin update moonbrick@moonbrick
-claude plugin uninstall moonbrick@moonbrick
-claude plugin install moonbrick@moonbrick
 claude plugin list --json
 ```
 
-Both the release and development manifest currently say `0.1.0`. On Claude Code 2.1.296 a local marketplace reads its source folder directly (`readFromFolder` in the list); update alone leaves the old cached `installPath` files unchanged. Reinstall refreshes that cache. Keep the checkout available, and restart Claude Code or run `/reload-plugins` to load the current skills/hooks. Updating the plugin does not migrate existing games; run `/moonbrick:update` in each game afterward.
+The version changed (0.1.0 → 1.0.0-beta.1), so `update` replaces the cached copy; the acceptance test checks that no 0.1.0 file survives. Restart Claude Code or run `/reload-plugins` to load the new skills/hooks. Updating the plugin does not migrate existing games; run `/moonbrick:update` in each game afterward. If you install from a local checkout whose version did not change, `update` keeps the old cached files (Claude Code 2.1.296): `claude plugin uninstall moonbrick@moonbrick` then `install` refreshes it.
 
 Run `python scripts/test-install.py` to verify isolated fresh installation, an actual `v0.1.0` plugin upgrade, exact installed file hashes, empty-cache tool setup, scaffolding/check/build from the installed cache, and SessionStart. It uses temporary Claude/home/tool directories, stops its own Rojo server, cleans up, and checks the real plugin directory's listing/mtimes. `--skip-tools` checks installation/upgrade and scaffolding without tool downloads or the positive server test. Neither mode starts a Claude model session. Actual in-session `/reload-plugins` and the remote marketplace are separate manual checks.
 

@@ -37,14 +37,15 @@ class InstallTests(unittest.TestCase):
             rokit = root / ".rokit/bin"
             mixed.mkdir()
             rokit.mkdir(parents=True)
-            (mixed / "rokit.exe").write_bytes(b"not executed")
+            (mixed / "rojo.exe").write_bytes(b"not executed")
             (mixed / "git").write_bytes(b"preserved")
             with patch.dict(os.environ, {"PATH": str(mixed) + os.pathsep + str(rokit)}):
                 env = install.isolated_env(root / "isolated")
             entries = env["PATH"].split(os.pathsep)
             self.assertEqual(entries[1:], [str(mixed)])
             guard = Path(entries[0])
-            for name in ("rokit", "rojo", "luau-lsp", "selene", "stylua"):
+            self.assertFalse((guard / "rokit").exists(), "setup-tools must still bootstrap Rokit")
+            for name in ("rojo", "luau-lsp", "selene", "stylua"):
                 self.assertIn("exit 99", (guard / name).read_text())
                 if os.name == "nt":
                     self.assertIn("exit /b 99", (guard / (name + ".cmd")).read_text())
@@ -57,7 +58,7 @@ class InstallTests(unittest.TestCase):
                 if git_bash.is_file():
                     bash = str(git_bash)
             if bash:
-                for name in ("rokit", "rojo", "luau-lsp", "selene", "stylua"):
+                for name in ("rojo", "luau-lsp", "selene", "stylua"):
                     result = subprocess.run([bash, "--noprofile", "--norc", "-c", name], env=env, capture_output=True)
                     self.assertEqual(result.returncode, 99, name)
                 tool = installed / "rojo"
@@ -68,6 +69,17 @@ class InstallTests(unittest.TestCase):
                                         env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), "isolated-installed")
+
+    def test_stray_rokit_outside_its_cache_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mixed = root / "system-bin"
+            mixed.mkdir()
+            name = "rokit.exe" if os.name == "nt" else "rokit"
+            (mixed / name).write_bytes(b"not executed")
+            (mixed / name).chmod(0o755)
+            with patch.dict(os.environ, {"PATH": str(mixed)}), self.assertRaisesRegex(ValueError, "rokit outside"):
+                install.isolated_env(root / "isolated")
 
     def test_credentials_actions_and_git_location_do_not_reach_children(self):
         secrets = {key: "secret" for key in ("GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN",

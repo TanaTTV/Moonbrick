@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased (V1 development)
+## 1.0.0-beta.1 (unreleased; V1 beta candidate)
+- Plugin version 1.0.0-beta.1 so `claude plugin update` refreshes installed 0.1.0 copies (verified by the isolated install test).
 - Harden Net rejection reasons, warning summaries and departed-player tracking; isolate install-runner credentials/tools/config snapshots and validate cleanup PIDs. Clarify example-only Workspace/Lighting configuration.
 - Use automatic Blender material node trees on 5+ without accessing the deprecated `use_nodes` toggle; preserve legacy behavior before 5.0.
 - Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.

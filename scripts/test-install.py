@@ -34,9 +34,14 @@ def snapshot(path):
         return {"exists": False}
     entries = {}
     for item in sorted(path.rglob("*")):
+        rel = item.relative_to(path)
+        # Other running Claude sessions continuously write `.in_use/<pid>` markers and app-synced
+        # plugin state; that churn is not ours. Directory mtimes only echo those child changes.
+        if ".in_use" in rel.parts or rel.parts[0] == "synced":
+            continue
         stat = item.lstat()
-        entries[item.relative_to(path).as_posix()] = [stat.st_mtime_ns, stat.st_size, item.is_dir()]
-    return {"exists": True, "root_mtime_ns": path.stat().st_mtime_ns, "entries": entries}
+        entries[rel.as_posix()] = [None, None, True] if item.is_dir() else [stat.st_mtime_ns, stat.st_size, False]
+    return {"exists": True, "root_mtime_ns": None, "entries": entries}
 
 
 def fingerprint(value):
@@ -78,7 +83,8 @@ def isolated_env(root):
         if key.startswith(("CLAUDE_", "ROKIT_", "GIT_CONFIG_", "ACTIONS_")) or key in (
                 "BASH_ENV", "ENV", "GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             del env[key]
-    tool_names = ("rokit", "rojo", "luau-lsp", "selene", "stylua")
+    # No rokit stub: setup-tools.sh bootstraps Rokit only when `command -v rokit` finds nothing.
+    tool_names = ("rojo", "luau-lsp", "selene", "stylua")
     guard = root / "tool-guard"
     guard.mkdir()
     for name in tool_names:
@@ -94,6 +100,9 @@ def isolated_env(root):
         normalized = entry.replace("\\", "/").rstrip("/").lower()
         if entry and not normalized.endswith("/.rokit/bin"):
             path.append(entry)
+    stray = shutil.which("rokit", path=os.pathsep.join(path[1:]))
+    if stray:
+        raise ValueError(f"rokit outside ~/.rokit/bin is on PATH ({stray}); remove it from PATH so the empty-cache bootstrap is real")
     env.update({
         "HOME": home.as_posix(), "USERPROFILE": str(home),
         "CLAUDE_CONFIG_DIR": str(root / "claude-config"),
@@ -176,7 +185,8 @@ class Acceptance:
         return result.stdout
 
     def claude(self, *args):
-        return self.run([self.cli, "plugin", *args])
+        # Install/update can stall on a slow network for minutes; still bounded.
+        return self.run([self.cli, "plugin", *args], timeout=300)
 
     def installed(self):
         plugins = json.loads(self.claude("list", "--json"))
@@ -222,10 +232,14 @@ class Acceptance:
         self.claude("update", self.plugin_id)
         stale = inventory(self.installed()) != inventory(ROOT)
         print(f"Update-only cached copy stale: {stale}")
-        # Current and released manifests both say 0.1.0. Reinstall refreshes that
-        # cache even on CLIs that use readFromFolder for local marketplaces.
-        self.claude("uninstall", self.plugin_id)
-        self.claude("install", self.plugin_id)
+        current = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"]
+        if current != "0.1.0":
+            # A version bump is what makes the normal update command refresh the cache.
+            require(not stale, f"`claude plugin update` did not refresh 0.1.0 -> {current}")
+        else:
+            # Same version (development checkout): only reinstall refreshes the cache.
+            self.claude("uninstall", self.plugin_id)
+            self.claude("install", self.plugin_id)
         self.copy = self.installed()
         verify_copy(ROOT, self.copy)
 
