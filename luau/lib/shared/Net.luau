@@ -209,7 +209,7 @@ local function checkOptions(opts: Options?): number
 end
 
 local function allow(name: string, player: Player, rate: number): boolean
-	if player.Parent == nil then
+	if not player.Parent then
 		return false
 	end
 	local perRemote = buckets[name]
@@ -272,7 +272,7 @@ local function reject(name: string, player: Player, reason: string)
 	end
 	state.reasons[key] = (state.reasons[key] or 0) + 1
 	state.total += 1
-	if player.Parent ~= nil and not state.players[player] then -- first warning per connected player
+	if player.Parent and not state.players[player] then -- first warning per connected player
 		state.players[player] = true
 		state.distinctPlayers += 1
 		warn(`Net: rejected '{name}' from {player.Name}: {reason}`)
@@ -325,7 +325,7 @@ function Net.on(name: string, validators: { Validator }, handler: (Player, ...an
 	local r = remote(name, "RemoteEvent") :: RemoteEvent
 	registered[name] = true
 	return r.OnServerEvent:Connect(function(player, ...)
-		if player.Parent == nil then
+		if not player.Parent then
 			return
 		end
 		if not allow(name, player, rate) then
@@ -335,7 +335,7 @@ function Net.on(name: string, validators: { Validator }, handler: (Player, ...an
 		if not ok then
 			return reject(name, player, err or "invalid")
 		end
-		if player.Parent == nil then
+		if not player.Parent then
 			return
 		end
 		handler(player, ...)
@@ -356,7 +356,7 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 	registered[name] = true
 	inFlight[name] = {}
 	r.OnServerInvoke = function(player, ...)
-		if player.Parent == nil then
+		if not player.Parent then
 			return nil
 		end
 		if not allow(name, player, rate) then
@@ -368,7 +368,7 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 			reject(name, player, err or "invalid")
 			return nil
 		end
-		if player.Parent == nil then
+		if not player.Parent then
 			return nil
 		end
 		local perRemote = inFlight[name]
