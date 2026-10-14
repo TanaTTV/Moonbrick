@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.0-beta.1 (unreleased; V1 beta candidate)
+- Rojo startup ownership on Windows walks a native process snapshot instead of PowerShell/WMI (which took up to 20 s, the whole SessionStart budget); the install test stops a Rojo orphaned by a hook timeout on its own port only.
 - Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; local grader checks pass, provider comparison remains blocked by the shared-quota guard pending approval.
 - Harden disposable DataStore acceptance with a bounded universe listing gate, run-authored writes and cleanup, cooldown-tolerant headless Main coverage and strict CI checks; ignore departed Net callers before rate limiting and strip Unicode controls from rejection reasons.
 - Require listener ownership before install-runner cleanup, allowlist child environments and fingerprint real settings; compare all import properties/sibling order with visible default exemptions and an original-place notice; retain non-PBR texture sizes and report missing Blender action slots clearly.
