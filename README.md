@@ -83,7 +83,7 @@ Then start your first game in Claude Code:
 
 Start with the command (or say "use Moonbrick"): in our benchmark, Claude did not pick up the skills on its own for a terse "make a Roblox game" request ([details](docs/BENCHMARK.md)). Inside a Moonbrick project, the generated `CLAUDE.md` points it at the skills.
 
-The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) 1.2.0 and pinned Rojo/luau-lsp/Selene/StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, and review the connection diff. The development branch contains unreleased V1 work; [current evidence and release gates](docs/V1-STATUS.md) distinguish local checks from production readiness.
+The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) 1.2.0 and pinned Rojo/luau-lsp/Selene/StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, and review the connection diff. This is a **beta** (`1.0.0-beta.1`). What was tested, and what was not, is listed per requirement in the [V1 beta ledger](docs/V1-BETA-LEDGER.md).
 
 ## 🧰 What you get
 
@@ -193,7 +193,8 @@ Good-looking games come from art, not code. Moonbrick's design workflow:
 - [ ] Design-review rubric, lighting presets, and the texture generator as a reusable tool
 - [x] Optional native Blender → FBX export with budgets/source hashes and actual Blender static-prop round-trip tests
 - [ ] Blender FBX → Studio rendered mesh/rig/PBR import acceptance
-- [ ] Verified macOS run (scripts are written for it; reports welcome)
+- [x] Verified macOS run (CI passes on macOS; reports from real machines still welcome)
+- [ ] Real-device touch/gamepad check and the remaining live DataStore scenarios (engine shutdown, natural lock expiry, two servers)
 
 See [ROADMAP.md](ROADMAP.md) for details.
 

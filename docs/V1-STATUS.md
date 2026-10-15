@@ -1,5 +1,7 @@
 # V1 development ledger
 
+> Historical (PR #1, stability phase). The current beta acceptance status is [V1-BETA-LEDGER.md](V1-BETA-LEDGER.md); where the two differ, the beta ledger is newer. Checkboxes below were not all updated after PR #1.
+
 Branch: `dev/v1-stability`. Base: `c451028`. Merged to `main` via PR #1 with owner approval (2026-10-13). No release, version tag, asset upload, Roblox publication or production DataStore access has been authorized or performed.
 
 ## Architecture audit

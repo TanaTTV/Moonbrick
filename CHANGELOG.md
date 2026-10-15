@@ -1,8 +1,12 @@
 # Changelog
 
-## 1.0.0-beta.1 (unreleased; V1 beta candidate)
+## 1.0.0-beta.1 (2026-10-15, beta)
+Beta, not a stable 1.0. Evidence per requirement, including what was **not** tested, is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md).
+- Live DataStore acceptance passed on a disposable private experience (7/7: round-trip, session-lock contention, stale-lock takeover, shutdown flush, invalid-data refusal + recovery, retry/backoff; no leftovers, 51/60 requests). Not yet run live: real engine shutdown/restart, natural 600 s lock expiry, two-server contention, real provider throttling.
+- Measured Claude Code benchmark ([docs/BENCHMARK.md](docs/BENCHMARK.md), n=3 per condition): with the plugin merely installed the skills were not invoked on a terse prompt; when told to use Moonbrick they were, with session-locked saves in 3/3 runs (vs naive DataStore in 6/6 baseline runs) at about 1.9x median cost. No token saving is claimed. Start with `/moonbrick:new`.
+- Remote GitHub marketplace install verified; bench harness path handling fixed for Windows 8.3 and macOS `/private/var` temp directories; benchmark tests run in CI.
 - Rojo startup ownership on Windows walks a native process snapshot instead of PowerShell/WMI (which took up to 20 s, the whole SessionStart budget); the install test stops a Rojo orphaned by a hook timeout on its own port only.
-- Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; local grader checks pass, provider comparison remains blocked by the shared-quota guard pending approval.
+- Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; measured results are in docs/BENCHMARK.md.
 - Harden disposable DataStore acceptance with a bounded universe listing gate, run-authored writes and cleanup, cooldown-tolerant headless Main coverage and strict CI checks; ignore departed Net callers before rate limiting and strip Unicode controls from rejection reasons.
 - Require listener ownership before install-runner cleanup, allowlist child environments and fingerprint real settings; compare all import properties/sibling order with visible default exemptions and an original-place notice; retain non-PBR texture sizes and report missing Blender action slots clearly.
 - Plugin version 1.0.0-beta.1 so `claude plugin update` refreshes installed 0.1.0 copies (verified by the isolated install test).
@@ -12,7 +16,7 @@
 - Format the headless harness and PlayerData with the template StyLua rules; check shipped Luau, the harness and examples in CI.
 - Add bounded Net rejection counters with isolated snapshots, active-player cleanup and per-remote summaries limited to once per minute.
 - Add isolated Claude Code fresh-install/0.1.0 plugin-upgrade acceptance, exact cached component hashes, empty-cache tool bootstrap, installed-copy scaffold/check/build and SessionStart checks. Document reinstall for same-version local marketplace upgrades; support a fast `--skip-tools` mode.
-- Prepare a self-contained, default-refusing DataStore acceptance project with place/universe gates, synthetic keys, bounded requests/cleanup, memory-only headless validation, and owner runbooks for two-server contention, timed expiry and shutdown/restart. No live DataStore or publishing acceptance is implied.
+- Add a self-contained, default-refusing DataStore acceptance project with place/universe gates, synthetic keys, bounded requests/cleanup, memory-only headless validation, and owner runbooks for two-server contention, timed expiry and shutdown/restart. The base suite has since passed live (see above).
 - Fix false-success checking, failed/stale sourcemaps, partial type downloads and formatter failure handling; include dynamic MCPKit in checking/linting.
 - Replace destructive import with staged validation/promotion, backups, reserved-name refusal, advisory script scan and no automatic git staging. Preserve non-imported world content and explicit project settings.
 - Add transactional/idempotent managed updates with backups, missing service-preservation settings and safe ignore migration. Project scripts require Python 3.10+.
@@ -27,7 +31,7 @@
 - Add cross-platform CI, host/headless/isolated Studio regressions, actual 0.1 upgrade checks, real Rojo integration and measured output benchmark.
 - QA fixes: `PlayerData.set`/`increment` reject non-finite/unserializable values; a final save with invalid data still releases the lock (keeping the last good save) instead of locking the player out for 10 minutes; failed manual saves warn. `K.logs()` no longer misses warnings raised in the same call. `K.audit()` reports its true total and refuses to run in playtests (engine scripts produced hundreds of false positives). Crystal Rush HUD label reads "Crystals".
 - Stability follow-ups: saved data that fails validation is refused once (no retry storm), never overwritten, and can be recovered with the opt-in `onInvalidData` callback (`PlayerData.sanitize` provided); the original is kept in a bounded `backups` list and recovery refuses rather than discarding a backup. Crystal Rush checks movement against a server-trusted position, pulling back teleports/speed hacks before the pickup distance check. Project sync/import only rejects links in the paths it manages (`src`, `tools`, `tests`, `.moonbrick`, project files), so `node_modules` links no longer block upgrades. A `serve.lock` left by a killed launch is reclaimed after 60 s; a live one reports "startup in progress" instead of "File exists". CI authenticates Rokit to avoid GitHub API rate-limit failures. The Windows listener-ownership check allows for slow WMI startup (3 s → 20 s timeout).
-- V1 release gates remain open; no 1.0 version/tag/publication is implied by these changes.
+- Known gaps in this beta: real-device touch/gamepad and Device Emulator checks, Blender FBX import/rendering in Roblox, terrain import, and the extra DataStore scenarios listed above.
 
 ## 0.1.0
 First release.
