@@ -19,7 +19,7 @@ Status: PASS · FAIL · BLOCKED · NOT TESTED · IN PROGRESS. Evidence kinds: **
 | 10 | Performance + token-efficiency benchmark (measured, no invented numbers) | PASS (measured; result is not a saving) | `docs/BENCHMARK.md`, Sonnet, n=3/condition: plugin merely installed → skills never invoked, cost ≈ baseline ($0.147 vs $0.156 median); told to use Moonbrick → 3/3 used it, session-locked PlayerData in 3/3 vs naive DataStore in 6/6 baseline, ≈1.9× median cost ($0.293). All 9 runs pass headless/static checks. Studio tree benchmark: fewer chars, higher latency |
 | 11 | Representative end-to-end workflow demonstration | PASS (headless + Studio, separate) | Benchmark E runs: Claude Code + Moonbrick from empty dir → scaffold → feature → strict check/lint/build (3/3). Crystal Rush: built, synced to Studio, played (pickup, HUD, multiplayer in PR #1 QA). Not one continuous session |
 | 12 | Independent security/persistence review of all V1-beta changes | PASS (2 rounds) | R1 + R2 (Claude Sonnet, read-only); all MED findings fixed (F1, F2a, F2b) |
-| 13 | GitHub CI green on integration branch | PASS @ a979997 (latest push pending) | stability ×3, install ×2, plugin |
+| 13 | GitHub CI green on integration branch | PASS @ 55622d8 | stability ×3 (ubuntu/windows/macos), install ×2, plugin; runs 38693414155, 38693410354. Earlier red @ 252d51e was a bench path-resolution bug, fixed in 55622d8 |
 | 14 | Release version/tag/publication | BLOCKED (owner decision) | — |
 
 ## Known limitations found during V1 beta
