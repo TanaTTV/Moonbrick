@@ -180,3 +180,23 @@ Exit: `0`. Raw captured output:
 ## Built-place inspection
 
 Parsed `.artifacts/ds-acceptance.rbxlx` locally as XML. It contains exactly five ModuleScripts (`Config`, `Lifecycle`, `PlayerDataFactory`, `Safety`, `Scenarios`) and one server Script (`Main`), with no LocalScript. SHA256: `c1926db407a47d63fbf4618aed65ac69d81d150cd487924c168c97c41d9e67d0`. The project's confirmation attribute is false and the allowlist module is empty by default. `git diff --check` passed. Commit and clean-worktree evidence is returned in the final handoff, because embedding a commit's own hash in its files would change that hash.
+
+## Live suite run (2026-10-15)
+
+Studio server in a new private disposable experience (place/universe IDs intentionally not recorded), `mode = "suite"`, run ID `b579eaf71c85`. Raw captured output:
+
+```text
+PASS roundtrip: fresh token loaded Coins=42 after release
+PASS contention: second token refused while held; succeeds after release (same job ID)
+PASS stale: seeded 601-second-old lock taken over; fixed expiry=600s, no configurable timeout
+PASS shutdown: shipped BindToClose body waited for in-flight Player API save, flushed Coins=91, released lock; engine shutdown still manual
+LOAD REFUSED: saved data is invalid (...non-finite number); not loaded or overwritten. Set onInvalidData to recover
+PASS invalid: default refused once without writing; onInvalidData=sanitize recovered defaults/Gems and retained original backup
+PASS budget: UpdateAsync budget before=2498, after=2497; 2 injected throttles, waits=0.05s/0.10s, then success; real throttling unproven
+LEFTOVERS: none
+PASS cleanup: 6 keys absent; owned records removed and verified via uncached UpdateAsync
+DATASTORE ACCEPTANCE: 7 passed, 0 failed
+REQUESTS: 51/60 (includes listing, read-through UpdateAsync and cleanup)
+```
+
+Not run: real engine shutdown/restart, natural 600 s lock expiry, two-server contention. The confirmation attribute was reset to false afterwards. Disposable-experience archival/cleanup is an owner step.
