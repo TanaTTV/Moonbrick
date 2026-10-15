@@ -11,8 +11,15 @@
     {
       "id": "device-gamepad",
       "status": "pending",
-      "evidence": [],
-      "notes": "Controller or physical gamepad X collection and movement; PC E regression."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-15-studio-input-partial.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo, no emulator preset; fresh local Crystal Rush (d45f9f5)",
+          "result": "inconclusive",
+          "date": "2026-10-15"
+        }
+      ],
+      "notes": "Controller or physical gamepad X collection and movement; PC E regression. 2026-10-15: keyboard E regression passed (+1); synthetic ButtonX awarded +1 but LastInputType stayed Keyboard, so a real controller is still required."
     },
     {
       "id": "device-physical-performance",
