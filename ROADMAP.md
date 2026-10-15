@@ -1,6 +1,6 @@
 # Roadmap
 
-V1 implementation and acceptance evidence is tracked in [docs/V1-STATUS.md](docs/V1-STATUS.md). Development includes stability fixes, optional native Blender export, server genre helpers, a buildable example and CI. Release remains gated on real multi-client/provider/mesh-import/device checks and approval. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+The `1.0.0-beta.1` acceptance evidence, including what is still untested, is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md); earlier history is in [docs/V1-STATUS.md](docs/V1-STATUS.md). A stable 1.0 still needs real-device touch/gamepad checks, Blender FBX import/rendering in Roblox, terrain import and the extra live DataStore scenarios. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Next: Creator Store assets (planned, not started)
 Use the Roblox Creator Store safely from Claude. The Studio MCP already has `search_asset` / `insert_asset`; moonbrick adds the safety and project integration around them.

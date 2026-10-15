@@ -1,4 +1,4 @@
-"""Actual Blender static-prop export and reimport regression. Optional; never installs Blender."""
+"""Actual native Blender static/PBR/rig/animation regression. Optional; never installs or uploads."""
 import argparse
 import hashlib
 import importlib.util
@@ -10,6 +10,23 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def run_blender(executable, script, *arguments):
+    command = [executable, "--background", "--factory-startup", "--disable-autoexec",
+               "--python-exit-code", "1", "--python", str(script), "--", *map(str, arguments)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=90)
+    if result.returncode:
+        raise RuntimeError("headless Blender regression failed:\n" + result.stdout + result.stderr)
+    if "DeprecationWarning" in result.stderr + result.stdout:
+        raise AssertionError("Blender emitted deprecated API access:\n" + result.stderr + result.stdout)
+    for line in result.stdout.splitlines():
+        if line.startswith("PASS:"): print(line, flush=True)
+
+
+def hashes(directory):
+    return {path.relative_to(directory).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in directory.rglob("*") if path.is_file()}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--blender", required=True)
@@ -17,44 +34,68 @@ def main():
     spec = importlib.util.spec_from_file_location("asset_tools", ROOT / "scripts/assets.py")
     assets = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(assets)
-    with tempfile.TemporaryDirectory(prefix="moonbrick-blender-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="regression-", dir=ROOT / "assets/blender") as tmp:
         root = Path(tmp)
-        source = root / "source/props.blend"
-        subprocess.run([args.blender, "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1", "--python", str(ROOT / "assets/blender/example_scene.py"), "--", str(source)], check=True, stdout=subprocess.DEVNULL, timeout=60)
-        cfg = json.loads((ROOT / "assets/art.example.json").read_text())
-        manifest = root / "art.json"
-        manifest.write_text(json.dumps(cfg))
-        digest = hashlib.sha256(source.read_bytes()).hexdigest()
-        assets.export(manifest, root / "export", args.blender)
-        report = json.loads((root / "export/report.json").read_text())
-        assert report["sourceSha256"] == digest
-        assert [asset["id"] for asset in report["assets"]] == ["crystal", "rock"]
-        assert all(0 < asset["triangles"] <= 500 for asset in report["assets"])
-        try: assets.export(manifest, root / "export", args.blender)
-        except ValueError: pass
-        else: raise AssertionError("export overwrote an existing output")
-        # Reimport with Blender's native FBX reader and assert real geometry and scale.
-        check = root / "reimport.py"
-        check.write_text('''import bpy,sys
-from pathlib import Path
-bpy.ops.wm.read_factory_settings(use_empty=True)
-source=Path(sys.argv[sys.argv.index("--")+1])
-bpy.ops.import_scene.fbx(filepath=str(source))
-meshes=[obj for obj in bpy.context.scene.objects if obj.type=="MESH"]
-assert len(meshes)==1
-assert abs(meshes[0].dimensions.z-1.2)<0.001, str(meshes[0].dimensions)
-assert len(meshes[0].data.polygons)>0
-print("PASS: FBX native reimport preserves geometry and 1.2m height")
-''')
-        subprocess.run([args.blender, "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1", "--python", str(check), "--", str(root / "export/crystal.fbx")], check=True, timeout=60)
-        cfg["assets"][0]["maxTriangles"] = 1
-        manifest.write_text(json.dumps(cfg))
-        try: assets.export(manifest, root / "rejected", args.blender)
-        except RuntimeError: pass
-        else: raise AssertionError("over-budget geometry was accepted")
-        assert not (root / "rejected").exists()
-        assert hashlib.sha256(source.read_bytes()).hexdigest() == digest
-        print(f"PASS: {report['blenderVersion']} static assets, native FBX round-trip, budgets, source fidelity and output refusal")
+        template = json.loads((ROOT / "assets/art.example.json").read_text())
+
+        def fixture(name, variant="valid"):
+            directory = root / name
+            source = directory / "source/props.blend"
+            script = "example_scene.py" if name == "static" else "rig_pbr_scene.py"
+            run_blender(args.blender, ROOT / "assets/blender" / script, source, variant)
+            cfg = json.loads(json.dumps(template))
+            if name != "static":
+                cfg["assets"] = [
+                    {"id": "pbr", "kind": "static", "objects": ["PBRProp"], "pbr": True,
+                     "maxTriangles": 500, "maxMaterials": 1, "maxTextureSize": 1024},
+                    {"id": "rig", "kind": "rig", "objects": ["FixtureRig"], "animation": True,
+                     "maxTriangles": 500, "maxMaterials": 1, "maxTextureSize": 1024,
+                     "maxBones": 8, "maxInfluences": 4},
+                ]
+            manifest = directory / "art.json"
+            manifest.write_text(json.dumps(cfg))
+            return directory, manifest, cfg
+
+        for name in ("static", "advanced"):
+            directory, manifest, cfg = fixture(name)
+            before = hashes(directory / "source")
+            assets.export(manifest, directory / "export", args.blender)
+            report = json.loads((directory / "export/report.json").read_text())
+            assert report["sourceSha256"] == before["props.blend"]
+            assert report["manifestSha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+            assert [asset["id"] for asset in report["assets"]] == [asset["id"] for asset in cfg["assets"]]
+            assert all(0 < asset["triangles"] <= 500 for asset in report["assets"])
+            assert hashes(directory / "source") == before
+            run_blender(args.blender, ROOT / "assets/blender/check_roundtrip.py", directory / "export")
+            exported = hashes(directory / "export")
+            try: assets.export(manifest, directory / "export", args.blender)
+            except ValueError as error:
+                assert "output must be a new directory" in str(error), str(error)
+            else: raise AssertionError("export overwrote an existing output")
+            assert hashes(directory / "export") == exported
+            print(f"PASS: {name} geometry budgets, source/texture hashes and existing-output refusal", flush=True)
+
+        cases = [("triangles", "valid", "triangle budget exceeded"),
+                 ("influences", "influences", "influence budget exceeded at vertex 0: 5, limit 4"),
+                 ("npot", "npot", "texture must have power-of-two dimensions"),
+                 ("oversize", "oversize", "texture budget exceeded"),
+                 ("normal_colorspace", "normal_colorspace", "NormalMap colorspace must be Non-Color"),
+                 ("bones", "valid", "bone budget exceeded")]
+        for name, variant, message in cases:
+            directory, manifest, cfg = fixture(name, variant)
+            if name == "triangles": cfg["assets"][1]["maxTriangles"] = 1
+            if name == "bones": cfg["assets"][1]["maxBones"] = 2
+            if name == "influences": cfg["assets"].reverse()
+            manifest.write_text(json.dumps(cfg))
+            before = hashes(directory)
+            try: assets.export(manifest, directory / "rejected", args.blender)
+            except RuntimeError as error:
+                assert message in str(error), str(error)
+            else: raise AssertionError(f"{name} invalid fixture was accepted")
+            assert not (directory / "rejected").exists()
+            assert hashes(directory) == before, "failed export left files or changed source textures"
+            print(f"PASS: negative {name} refused ({message}); no output or source changes", flush=True)
+        print(f"PASS: Blender {report['blenderVersion']} static/PBR/rig/animation native regression; Studio import/rendering NOT validated", flush=True)
 
 
 if __name__ == "__main__": main()

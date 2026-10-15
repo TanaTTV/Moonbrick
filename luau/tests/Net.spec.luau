@@ -72,4 +72,383 @@ return function(t: any)
 			false
 		)
 	end)
+
+	-- Deterministic remote integration fixtures are supplied by the standalone test bundles.
+	-- The in-game test runner still runs the engine-backed validator specs above.
+	if not t.loadNet then
+		return
+	end
+	local function fixture()
+		local now = 0
+		local warnings: { string } = {}
+		local remotes: { [string]: any } = {}
+		local removing: any = {}
+		function removing:Connect(fn: any)
+			self.callback = fn
+		end
+		local players = { PlayerRemoving = removing }
+		local folder: any = {
+			IsA = function(_, class: string)
+				return class == "Folder"
+			end,
+		}
+		function folder:FindFirstChild(name: string)
+			return remotes[name]
+		end
+		local replication = {
+			FindFirstChild = function()
+				return folder
+			end,
+		}
+		local services: { [string]: any } = {
+			Players = players,
+			ReplicatedStorage = replication,
+			RunService = {
+				IsServer = function()
+					return true
+				end,
+			},
+		}
+		local instances = {
+			new = function(class: string)
+				local signal: any = {}
+				function signal:Connect(fn: any)
+					self.callback = fn
+					return { Disconnect = function() end }
+				end
+				local r: any = {
+					OnServerEvent = signal,
+					IsA = function(_, requested: string)
+						return requested == class
+					end,
+				}
+				return setmetatable(r, {
+					__newindex = function(self: any, key: string, value: any)
+						rawset(self, key, value)
+						if key == "Parent" then
+							remotes[self.Name] = self
+						end
+					end,
+				})
+			end,
+		}
+		local net = t.loadNet(
+			{
+				GetService = function(_, name: string)
+					return services[name]
+				end,
+			},
+			instances,
+			{
+				clock = function()
+					return now
+				end,
+			},
+			function(message: string)
+				table.insert(warnings, message)
+			end
+		)
+		return {
+			net = net,
+			warnings = warnings,
+			player = { Name = "Test", UserId = 1, Parent = players } :: any,
+			other = { Name = "Other", UserId = 2, Parent = players } :: any,
+			at = function(value: number)
+				now = value
+			end,
+			leave = function(player: any)
+				removing.callback(player)
+			end,
+			fire = function(name: string, player: any, ...: any)
+				remotes[name].OnServerEvent.callback(player, ...)
+			end,
+			invoke = function(name: string, player: any, ...: any)
+				return remotes[name].OnServerInvoke(player, ...)
+			end,
+		}
+	end
+
+	t.test("Net counts event/request rejections per remote, reason and distinct active player", function()
+		local f = fixture()
+		local calls = 0
+		f.net.on("Event", { f.net.int() }, function()
+			calls += 1
+		end, { rate = 2 })
+		f.net.handle("Request", {}, function()
+			calls += 1
+		end)
+		f.fire("Event", f.player, "bad")
+		f.fire("Event", f.player, "bad")
+		f.fire("Event", f.player, 1) -- exhausted bucket, rejected before handler
+		f.fire("Event", f.other, 1) -- accepted calls do not create rejection counters
+		f.invoke("Request", f.other, "extra")
+		local stats = f.net.stats()
+		t.eq(calls, 1)
+		t.eq(stats.Event.total, 3)
+		t.eq(stats.Event.reasons["argument 1: expected finite number"], 2)
+		t.eq(stats.Event.reasons["rate limit"], 1)
+		t.eq(stats.Event.distinctPlayers, 1)
+		t.eq(stats.Request.total, 1)
+		t.eq(stats.Request.distinctPlayers, 1)
+		t.eq(#f.warnings, 2)
+	end)
+
+	t.test("Net stats snapshots isolate nested reasons and remote tables", function()
+		local f = fixture()
+		f.net.on("Copy", {}, function() end)
+		f.fire("Copy", f.player, "extra")
+		local copy = f.net.stats()
+		copy.Copy.total = 999
+		copy.Copy.distinctPlayers = 999
+		copy.Copy.reasons["too many arguments (max 0)"] = 999
+		copy.Copy.reasons.fake = 999
+		copy.Fake = copy.Copy
+		local fresh = f.net.stats()
+		t.eq(fresh.Copy.total, 1)
+		t.eq(fresh.Copy.distinctPlayers, 1)
+		t.eq(fresh.Copy.reasons["too many arguments (max 0)"], 1)
+		t.eq(fresh.Copy.reasons.fake, nil)
+		t.eq(fresh.Fake, nil)
+	end)
+
+	t.test("Net summaries count continued rejections and are limited per remote to 60 seconds", function()
+		local f = fixture()
+		f.net.on("Summary", {}, function() end)
+		f.net.on("Independent", {}, function() end)
+		f.fire("Summary", f.player, "extra")
+		f.fire("Independent", f.player, "extra")
+		f.at(59)
+		f.fire("Summary", f.player, "extra")
+		t.eq(#f.warnings, 2)
+		f.at(60)
+		f.fire("Summary", f.player, "extra")
+		t.eq(#f.warnings, 3)
+		t.ok(f.warnings[3]:find("rejected 2 more calls", 1, true))
+		f.fire("Independent", f.player, "extra")
+		t.eq(#f.warnings, 4, "each remote has its own summary clock")
+		f.at(119)
+		f.fire("Summary", f.player, "extra")
+		t.eq(#f.warnings, 4)
+		f.at(120)
+		f.fire("Summary", f.player, "extra")
+		t.eq(#f.warnings, 5)
+		t.ok(f.warnings[5]:find("rejected 2 more calls", 1, true))
+		f.at(1000)
+		t.eq(#f.warnings, 5, "no timer logs after rejection stops")
+		f.fire("Summary", f.player, "extra")
+		t.ok(f.warnings[6]:find("rejected 1 more calls", 1, true))
+	end)
+
+	t.test("Net caps dynamic reason buckets and retained reason length", function()
+		local f = fixture()
+		f.net.on("Bounded", {
+			function(value: any)
+				return false, tostring(value)
+			end,
+		}, function() end, { rate = 100 })
+		for i = 1, 40 do
+			f.fire("Bounded", f.player, string.rep("x", 1000) .. i)
+		end
+		for i = 1, 40 do
+			f.fire("Bounded", f.player, tostring(i))
+		end
+		local count, sum = 0, 0
+		for reason, amount in f.net.stats().Bounded.reasons do
+			count += 1
+			sum += amount
+			t.ok(#reason <= 160)
+		end
+		t.eq(count, 16)
+		t.eq(sum, 80)
+		t.eq(f.net.stats().Bounded.reasons.other, 26)
+	end)
+
+	t.test("Net leave cleanup releases distinct players, warnings and token buckets", function()
+		local f = fixture()
+		f.net.on("Leave", {}, function() end, { rate = 1 })
+		f.fire("Leave", f.player, "extra")
+		f.fire("Leave", f.other, "extra")
+		t.eq(f.net.stats().Leave.distinctPlayers, 2)
+		f.leave(f.player)
+		f.leave(f.player) -- repeated cleanup must not decrement twice
+		t.eq(f.net.stats().Leave.distinctPlayers, 1)
+		t.eq(f.net.stats().Leave.total, 2, "lifetime counts survive leave")
+		f.fire("Leave", f.player, "extra") -- same identity models rejoin; full bucket and fresh warning
+		t.eq(f.net.stats().Leave.distinctPlayers, 2)
+		t.eq(f.net.stats().Leave.reasons["rate limit"], nil)
+		t.eq(#f.warnings, 3)
+		f.leave(f.player)
+		f.leave(f.other)
+		t.eq(f.net.stats().Leave.distinctPlayers, 0)
+	end)
+
+	t.test("Net counts pending request rejection and cleans in-flight state on leave", function()
+		local f = fixture()
+		local started = 0
+		f.net.handle("Pending", {}, function()
+			started += 1
+			coroutine.yield()
+		end, { maxInFlight = 1 })
+		local first = coroutine.create(function()
+			f.invoke("Pending", f.player)
+		end)
+		t.ok(coroutine.resume(first))
+		f.invoke("Pending", f.player)
+		t.eq(f.net.stats().Pending.reasons["too many pending requests"], 1)
+		f.leave(f.player)
+		local second = coroutine.create(function()
+			f.invoke("Pending", f.player)
+		end)
+		t.ok(coroutine.resume(second))
+		t.eq(started, 2)
+		t.ok(coroutine.resume(first))
+		t.ok(coroutine.resume(second))
+		t.eq(f.net.stats().Pending.distinctPlayers, 0)
+	end)
+	t.test("Net extra argument counts share a constant reason", function()
+		for count = 1, 40 do
+			local ok, reason = Net.check({}, {}, count)
+			t.eq(ok, false)
+			t.eq(reason, "too many arguments (max 0)")
+		end
+	end)
+
+	t.test("Net overflow warnings retain the real sanitized UTF-8 reason", function()
+		local f = fixture()
+		f.net.on("Reasons", {
+			function(value: any)
+				return false, value
+			end,
+		}, function() end, { rate = 100 })
+		for i = 1, 15 do
+			f.fire("Reasons", f.player, tostring(i))
+		end
+		local reason = "\n\t\0" .. string.rep("x", 143) .. "é"
+		f.fire("Reasons", f.other, reason)
+		t.eq(f.net.stats().Reasons.reasons.other, 1)
+		t.eq(f.warnings[2], "Net: rejected 'Reasons' from Other: argument 1:    " .. string.rep("x", 143) .. "é")
+		local g = fixture()
+		g.net.on("Unicode", {
+			function()
+				return false, string.rep("x", 147) .. "é"
+			end,
+		}, function() end)
+		g.fire("Unicode", g.player, 1)
+		for key in g.net.stats().Unicode.reasons do
+			t.eq(#key, 159)
+			t.ok(utf8.len(key))
+		end
+	end)
+
+	t.test("Net first warnings are excluded from pending summaries", function()
+		local f = fixture()
+		f.net.on("First", {}, function() end)
+		f.fire("First", f.player, 1)
+		f.at(60)
+		f.fire("First", f.other, 1)
+		t.eq(#f.warnings, 2)
+		f.fire("First", f.player, 1)
+		t.eq(#f.warnings, 3)
+		t.ok(f.warnings[3]:find("rejected 1 more calls", 1, true))
+	end)
+
+	t.test("Net late calls never retain departed players or run handlers", function()
+		local f = fixture()
+		local calls = 0
+		f.net.on("Late", {}, function()
+			calls += 1
+		end, { rate = 1 })
+		f.net.handle("LateRequest", {
+			function()
+				f.leave(f.player)
+				f.player.Parent = nil
+				return true
+			end,
+		}, function()
+			calls += 1
+		end)
+		f.invoke("LateRequest", f.player, 1) -- validator can yield across PlayerRemoving
+		f.fire("Late", f.player, 1)
+		f.invoke("LateRequest", f.player, 1)
+		t.eq(calls, 0)
+		t.eq(f.net.stats().Late, nil, "departed event must not count as a rate rejection")
+		t.eq(f.net.stats().LateRequest, nil, "departed request must not count as a rate rejection")
+		t.eq(#f.warnings, 0)
+		f.player.Parent = {} -- rejoin must start with a fresh bucket
+		f.fire("Late", f.player)
+		t.eq(calls, 1)
+	end)
+	t.test("Net event handler stops after a validator yields past leave", function()
+		local f = fixture()
+		local calls = 0
+		f.net.on("YieldAccept", {
+			function()
+				coroutine.yield()
+				return true
+			end,
+		}, function()
+			calls += 1
+		end)
+		local call = coroutine.create(function()
+			f.fire("YieldAccept", f.player, 1)
+		end)
+		t.ok(coroutine.resume(call))
+		f.leave(f.player)
+		f.player.Parent = nil
+		t.ok(coroutine.resume(call))
+		t.eq(calls, 0)
+		t.eq(f.net.stats().YieldAccept, nil)
+		t.eq(#f.warnings, 0)
+	end)
+	t.test("Net strips C1 and bidi controls from warning and statistics reasons", function()
+		local f = fixture()
+		local controls = ""
+		for cp = 0x80, 0x9F do
+			controls ..= utf8.char(cp)
+		end
+		for cp = 0x202A, 0x202E do
+			controls ..= utf8.char(cp)
+		end
+		for cp = 0x2066, 0x2069 do
+			controls ..= utf8.char(cp)
+		end
+		f.net.on("Controls", {
+			function(value: any)
+				return false, controls .. value .. controls
+			end,
+		}, function() end)
+		f.fire("Controls", f.player, "é safe")
+		t.eq(f.net.stats().Controls.reasons["argument 1: é safe"], 1)
+		t.eq(f.warnings[1], "Net: rejected 'Controls' from Test: argument 1: é safe")
+		-- An empty reason from a custom check still has a useful warning/statistics key.
+		local g = fixture()
+		g.net.check = function()
+			return false, ""
+		end
+		g.net.on("Empty", {}, function() end)
+		g.fire("Empty", g.player)
+		t.eq(g.net.stats().Empty.reasons.invalid, 1)
+		t.eq(g.warnings[1], "Net: rejected 'Empty' from Test: invalid")
+	end)
+	t.test("Net rejection after a validator yields past leave keeps only totals", function()
+		local f = fixture()
+		f.net.on("YieldReject", {
+			function()
+				coroutine.yield()
+				return false, "late validation"
+			end,
+		}, function() end)
+		local call = coroutine.create(function()
+			f.fire("YieldReject", f.player, 1)
+		end)
+		t.ok(coroutine.resume(call))
+		f.leave(f.player)
+		f.player.Parent = nil
+		t.ok(coroutine.resume(call))
+		local stats = f.net.stats().YieldReject
+		t.eq(stats.total, 1)
+		t.eq(stats.reasons["argument 1: late validation"], 1)
+		t.eq(stats.distinctPlayers, 0)
+		t.eq(#f.warnings, 0)
+	end)
 end

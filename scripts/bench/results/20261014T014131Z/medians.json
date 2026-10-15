@@ -1,0 +1,24 @@
+{
+  "A": {
+    "accounted_runs": 0,
+    "input_tokens": null,
+    "output_tokens": null,
+    "cache_read_input_tokens": null,
+    "cache_creation_input_tokens": null,
+    "total_cost_usd": null,
+    "num_turns": null,
+    "duration_ms": null,
+    "wall_seconds": null
+  },
+  "B": {
+    "accounted_runs": 0,
+    "input_tokens": null,
+    "output_tokens": null,
+    "cache_read_input_tokens": null,
+    "cache_creation_input_tokens": null,
+    "total_cost_usd": null,
+    "num_turns": null,
+    "duration_ms": null,
+    "wall_seconds": null
+  }
+}

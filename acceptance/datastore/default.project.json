@@ -1,0 +1,11 @@
+{
+  "name": "Moonbrick DataStore Acceptance",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$attributes": { "MoonbrickAcceptanceConfirmed": false },
+      "Acceptance": { "$path": "src" }
+    }
+  }
+}

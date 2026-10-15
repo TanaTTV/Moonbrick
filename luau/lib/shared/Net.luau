@@ -7,6 +7,7 @@
 --   Net.on("BuyItem", { Net.string(32), Net.int(1, 99) }, function(player, itemId, qty) ... end, { rate = 5 })
 --   Net.handle("GetPrice", { Net.string(32) }, function(player, itemId) return 100 end)
 --   Net.fire(player, "Notify", "Saved!")   Net.fireAll("RoundStarted", 3)
+--   Net.stats() -- copied rejection totals/reasons and distinct currently connected players per remote
 -- Client:
 --   Net.fireServer("BuyItem", "sword", 1)   Net.listen("Notify", function(msg) ... end)
 --   local price = Net.invoke("GetPrice", "sword")
@@ -20,6 +21,12 @@ export type Validator = (value: any) -> (boolean, string?)
 export type Options = {
 	rate: number?, -- max calls per second per player (default 10); bursts up to the same number
 	maxInFlight: number?, -- maximum yielding request handlers per player (default 4)
+}
+
+export type RejectionStats = {
+	total: number,
+	reasons: { [string]: number },
+	distinctPlayers: number,
 }
 
 -- Validators ---------------------------------------------------------------------
@@ -120,7 +127,7 @@ end
 -- Check an argument list against validators. Exposed for tests and custom remotes.
 function Net.check(validators: { Validator }, args: { any }, count: number): (boolean, string?)
 	if count > #validators then
-		return false, `too many arguments ({count} > {#validators})`
+		return false, `too many arguments (max {#validators})`
 	end
 	for i, validate in validators do
 		local ran, ok, err = pcall(validate, args[i])
@@ -179,7 +186,19 @@ end
 
 -- Token bucket per player per remote.
 local buckets: { [string]: { [Player]: { tokens: number, last: number } } } = {}
-local warned: { [string]: { [Player]: boolean } } = {}
+type RejectionState = {
+	total: number,
+	reasons: { [string]: number },
+	reasonCount: number,
+	players: { [Player]: boolean },
+	distinctPlayers: number,
+	pending: number,
+	lastSummary: number,
+}
+local rejections: { [string]: RejectionState } = {}
+local MAX_REASONS = 16 -- includes the overflow bucket; validator messages may be dynamic
+local MAX_REASON_LENGTH = 160
+local SUMMARY_INTERVAL = 60
 local inFlight: { [string]: { [Player]: { count: number } } } = {}
 local registered: { [string]: boolean } = {}
 
@@ -190,6 +209,9 @@ local function checkOptions(opts: Options?): number
 end
 
 local function allow(name: string, player: Player, rate: number): boolean
+	if not player.Parent then
+		return false
+	end
 	local perRemote = buckets[name]
 	if not perRemote then
 		perRemote = {}
@@ -211,15 +233,71 @@ local function allow(name: string, player: Player, rate: number): boolean
 end
 
 local function reject(name: string, player: Player, reason: string)
-	local perRemote = warned[name]
-	if not perRemote then
-		perRemote = {}
-		warned[name] = perRemote
+	local now = os.clock()
+	local state = rejections[name]
+	if not state then
+		state = {
+			total = 0,
+			reasons = {},
+			reasonCount = 0,
+			players = {},
+			distinctPlayers = 0,
+			pending = 0,
+			lastSummary = now,
+		}
+		rejections[name] = state
 	end
-	if not perRemote[player] then -- warn once per player per remote to avoid log spam
-		perRemote[player] = true
+	reason = reason:gsub("%c", " ")
+	-- Strip UTF-8 C1 controls and bidi overrides/isolates without damaging other codepoints.
+	reason = reason:gsub("\194[\128-\159]", ""):gsub("\226\128[\170-\174]", ""):gsub("\226\129[\166-\169]", "")
+	local length = math.min(#reason, MAX_REASON_LENGTH)
+	-- Retreat to the start of a codepoint if the byte limit falls inside it.
+	while length > 0 and length < #reason do
+		local nextByte = string.byte(reason, length + 1)
+		if nextByte < 128 or nextByte >= 192 then
+			break
+		end
+		length -= 1
+	end
+	reason = reason:sub(1, length)
+	if reason == "" then
+		reason = "invalid"
+	end
+	local key = reason
+	if key == "other" or (not state.reasons[key] and state.reasonCount >= MAX_REASONS - 1) then
+		key = "other"
+	end
+	if not state.reasons[key] and key ~= "other" then
+		state.reasonCount += 1
+	end
+	state.reasons[key] = (state.reasons[key] or 0) + 1
+	state.total += 1
+	if player.Parent and not state.players[player] then -- first warning per connected player
+		state.players[player] = true
+		state.distinctPlayers += 1
 		warn(`Net: rejected '{name}' from {player.Name}: {reason}`)
+	else
+		state.pending += 1
 	end
+	-- Event-driven: no background task or warning when rejections stop.
+	if state.pending > 0 and now - state.lastSummary >= SUMMARY_INTERVAL then
+		warn(`Net: '{name}' rejected {state.pending} more calls since the last summary ({state.total} total)`)
+		state.pending = 0
+		state.lastSummary = now
+	end
+end
+
+-- Server-local lifetime counters; player identities are never exposed or retained after leave.
+function Net.stats(): { [string]: RejectionStats }
+	local result: { [string]: RejectionStats } = {}
+	for name, state in rejections do
+		result[name] = {
+			total = state.total,
+			reasons = table.clone(state.reasons),
+			distinctPlayers = state.distinctPlayers,
+		}
+	end
+	return result
 end
 
 if RunService:IsServer() then
@@ -227,8 +305,11 @@ if RunService:IsServer() then
 		for _, perRemote in buckets do
 			perRemote[player] = nil
 		end
-		for _, perRemote in warned do
-			perRemote[player] = nil
+		for _, state in rejections do
+			if state.players[player] then
+				state.players[player] = nil
+				state.distinctPlayers -= 1
+			end
 		end
 		for _, perRemote in inFlight do
 			perRemote[player] = nil
@@ -244,12 +325,18 @@ function Net.on(name: string, validators: { Validator }, handler: (Player, ...an
 	local r = remote(name, "RemoteEvent") :: RemoteEvent
 	registered[name] = true
 	return r.OnServerEvent:Connect(function(player, ...)
+		if not player.Parent then
+			return
+		end
 		if not allow(name, player, rate) then
 			return reject(name, player, "rate limit")
 		end
 		local ok, err = Net.check(validators, { ... }, select("#", ...))
 		if not ok then
 			return reject(name, player, err or "invalid")
+		end
+		if not player.Parent then
+			return
 		end
 		handler(player, ...)
 	end)
@@ -269,6 +356,9 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 	registered[name] = true
 	inFlight[name] = {}
 	r.OnServerInvoke = function(player, ...)
+		if not player.Parent then
+			return nil
+		end
 		if not allow(name, player, rate) then
 			reject(name, player, "rate limit")
 			return nil
@@ -276,6 +366,9 @@ function Net.handle(name: string, validators: { Validator }, handler: (Player, .
 		local ok, err = Net.check(validators, { ... }, select("#", ...))
 		if not ok then
 			reject(name, player, err or "invalid")
+			return nil
+		end
+		if not player.Parent then
 			return nil
 		end
 		local perRemote = inFlight[name]

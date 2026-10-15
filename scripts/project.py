@@ -264,6 +264,7 @@ def import_place(project: Path, place: Path):
             (project / "default.project.json").write_bytes(original_bytes)
             raise
     print(f"Imported {place.name}; review the Rojo connection diff before accepting. Backup: {backup}")
+    print("Workspace, Lighting and StarterPlayer settings stay in the original place (not imported). Keep that place when connecting Rojo.")
     print(f"Advisory import scan: {len(report['scripts'])} scripts, {len(report['findings'])} findings; review .moonbrick/import-report.json before play/publish.")
 
 

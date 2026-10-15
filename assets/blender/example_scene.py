@@ -3,6 +3,10 @@ from pathlib import Path
 import sys
 import bpy
 
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+from assets import material_node_tree
+
 destination = Path(sys.argv[sys.argv.index("--") + 1]).resolve()
 if destination.exists(): raise ValueError("refusing to replace an existing .blend file")
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -10,15 +14,25 @@ bpy.context.scene.unit_settings.system = "METRIC"
 bpy.context.scene.unit_settings.scale_length = 1
 material = bpy.data.materials.new("Moonbrick_Amethyst")
 material.diffuse_color = (0.37, 0.21, 0.68, 1)
-material.use_nodes = True
-bsdf = material.node_tree.nodes.get("Principled BSDF")
+node_tree = material_node_tree(material, bpy.app.version, enable=True)
+if node_tree is None: raise RuntimeError("material has no shader node tree")
+bsdf = next((n for n in node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)  # names are localized
+if bsdf is None: raise RuntimeError("material has no default Principled BSDF")
 bsdf.inputs["Base Color"].default_value = material.diffuse_color
 bsdf.inputs["Roughness"].default_value = 0.7
 bsdf.inputs["Metallic"].default_value = 0.05
+# Regression: legacy non-PBR assets may use non-power-of-two textures.
+image = bpy.data.images.new("Legacy_300x200", width=300, height=200)
+image.pixels.foreach_set([0.37, 0.21, 0.68, 1] * (300 * 200))
+image.pack()
+texture = node_tree.nodes.new("ShaderNodeTexImage")
+texture.image = image
+node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
 bpy.ops.mesh.primitive_cone_add(vertices=6, radius1=0.35, radius2=0, depth=1.2)
 crystal = bpy.context.object
 crystal.name = "Crystal"
 crystal.data.materials.append(material)
+# Both generated primitives have UV maps by default.
 bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.45, location=(1.2, 0, 0))
 rock = bpy.context.object
 rock.name = "Rock"

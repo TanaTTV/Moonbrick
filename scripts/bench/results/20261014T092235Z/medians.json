@@ -1,0 +1,24 @@
+{
+  "A": {
+    "accounted_runs": 3,
+    "input_tokens": 14,
+    "output_tokens": 5951,
+    "cache_read_input_tokens": 114750,
+    "cache_creation_input_tokens": 19108,
+    "total_cost_usd": 0.14645500000000003,
+    "num_turns": 13,
+    "duration_ms": 49640,
+    "wall_seconds": 50.574311500000476
+  },
+  "B": {
+    "accounted_runs": 3,
+    "input_tokens": 18,
+    "output_tokens": 8308,
+    "cache_read_input_tokens": 128909,
+    "cache_creation_input_tokens": 20899,
+    "total_cost_usd": 0.1829155,
+    "num_turns": 16,
+    "duration_ms": 67305,
+    "wall_seconds": 68.09557199999836
+  }
+}
