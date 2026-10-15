@@ -54,6 +54,14 @@ class StableAcceptanceTests(unittest.TestCase):
         self.assertIn("date must be", errors)
         self.assertIn("invalid result", errors)
 
+    def test_pass_with_contradicting_fail_is_invalid(self):
+        data = base()
+        data["gates"][0]["status"] = "passed"
+        data["gates"][0]["evidence"] = [
+            {"reference": "r1", "environment": "x", "result": "pass", "date": "2026-10-15"},
+            {"reference": "r2", "environment": "x", "result": "fail", "date": "2026-10-15"}]
+        self.assertIn("cannot include a fail result", " ".join(_validator.validate(data)[0]))
+
     def test_duplicates_rejected(self):
         data = base()
         data["gates"][1] = copy.deepcopy(data["gates"][0])
