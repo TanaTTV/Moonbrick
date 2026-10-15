@@ -222,6 +222,7 @@ def reward_pattern(constants=()):
 
 
 def static_score(source, sourcemap, kit):
+    source = Path(source).resolve()  # sourcemap paths are resolved below; temp dirs may be symlinked or 8.3-short
     classes = {}
     def walk(node, ancestors=()):
         lineage = ancestors + (node.get('name', ''),)
