@@ -20,7 +20,7 @@ Status: PASS · FAIL · BLOCKED · NOT TESTED · IN PROGRESS. Evidence kinds: **
 | 11 | Representative end-to-end workflow demonstration | PASS (headless + Studio, separate) | Benchmark E runs: Claude Code + Moonbrick from empty dir → scaffold → feature → strict check/lint/build (3/3). Crystal Rush: built, synced to Studio, played (pickup, HUD, multiplayer in PR #1 QA). Not one continuous session |
 | 12 | Independent security/persistence review of all V1-beta changes | PASS (2 rounds) | R1 + R2 (Claude Sonnet, read-only); all MED findings fixed (F1, F2a, F2b) |
 | 13 | GitHub CI green on integration branch | PASS @ 55622d8 | stability ×3 (ubuntu/windows/macos), install ×2, plugin; runs 38693414155, 38693410354. Earlier red @ 252d51e was a bench path-resolution bug, fixed in 55622d8 |
-| 14 | Release version/tag/publication | BLOCKED (owner decision) | — |
+| 14 | Release version/tag/publication | PASS (owner approved 2026-10-15) | PR #2 merged to `main` @ 1862e39; tag `v1.0.0-beta.1`; published as a GitHub pre-release. Not a stable 1.0 |
 
 ## Known limitations found during V1 beta
 
