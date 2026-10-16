@@ -89,6 +89,8 @@ jobs:
           cd .artifacts/ci-game
           bash tools/check.sh
           rojo build default.project.json -o smoke.rbxlx
+          cd ../..
+          bash scripts/check-recipes.sh .artifacts/ci-recipes
       - name: Real Rojo import and server integration
         run: python scripts/test-integration.py
       - name: Real Rojo import fidelity (large/UI/rig/world, .rbxlx + .rbxl)

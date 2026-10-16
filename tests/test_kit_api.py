@@ -45,6 +45,8 @@ class KitApiTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 project.new_project(root, "card")
             self.assertEqual((root / "tools/KIT_API.md").read_bytes(), (ROOT / "luau/API.md").read_bytes())
+            for recipe in ("Data", "Pickups", "Ability", "Shop"):
+                self.assertTrue(any((root / "tools/recipes" / recipe).rglob("*.luau")), recipe)
 
 
 if __name__ == "__main__":
