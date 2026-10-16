@@ -35,15 +35,29 @@
     },
     {
       "id": "blender-studio-static-pbr",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Import generated FBX, assign four SurfaceAppearance maps, inspect rendered output."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md",
+          "environment": "Blender 5.2.2 LTS; Roblox Studio 0.743.0.7431133 3D Importer default unit + Animation Editor; new local review place",
+          "result": "pass",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Import generated FBX, assign four SurfaceAppearance maps, inspect rendered output. 2026-10-16: PBR cube imported with all four maps auto-assigned and rendered correctly; Meters scale unit and static rock/crystal fixtures not exercised."
     },
     {
       "id": "blender-studio-rig-animation",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback."
+      "status": "failed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md",
+          "environment": "Blender 5.2.2 LTS; Roblox Studio 0.743.0.7431133 3D Importer default unit + Animation Editor; new local review place",
+          "result": "fail",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback. 2026-10-16: bones/skinning OK, but playback wrong: importer clip ignores Root (top pose FixtureRig), Animation Editor clip bakes a -90 deg X offset so the rig lies flat. Exporter fix required."
     },
     {
       "id": "terrain-import",
