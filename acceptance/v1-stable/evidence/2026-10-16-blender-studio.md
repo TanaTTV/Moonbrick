@@ -30,3 +30,9 @@ Limitations: the static `rock.fbx`/`crystal.fbx` fixtures were not imported; the
 ## Root cause and next step
 
 `assets/blender/export.py` exports with `axis_forward="-Z", axis_up="Y"` and no baked space transform, so the Z-up→Y-up conversion stays as a −90° X rotation on the armature, which Studio bakes into Root keys. Trying `bake_space_transform=True` breaks the existing Blender round-trip assertions (meshes re-import Y-up), so the fix needs its own change: probably rig-only (or a rest-pose-neutral armature), updated round-trip assertions, then a new Studio import + Animation Editor check. The armature/root naming (`FixtureRig` vs mesh part) should also be aligned or documented.
+
+## Update — owner re-import (same day)
+
+The owner imported `rig.fbx` again through the Animation Editor (no exporter or file change). The resulting `RBX_ANIMSAVES.rig.rig_Scene` has top pose `SkinnedMesh` and Root keys 0 → −0.3 → 0 rad (no −90° offset). Playtest playback via KeyframeSequenceProvider: Root −0.298 / Tip +0.298 at 0.5 s, and the screenshot shows the rig standing upright and bending. So **one Animation Editor import was tilted and one was correct**, and the cause of the difference is unknown. The exporter root-cause theory above is therefore unconfirmed. Status moved from failed to **pending**: one clean repeat (delete the saved clips, import once via the Animation Editor, play) decides it.
+
+Note: Animation Editor clips only play in a running game when a script loads and plays them (and a published game needs an uploaded animation ID). The rig not animating in an ordinary Play session is expected, not a defect.
