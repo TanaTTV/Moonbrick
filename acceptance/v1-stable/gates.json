@@ -61,9 +61,16 @@
     },
     {
       "id": "terrain-import",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Terrain voxels and original-place Rojo connection diff; preserve original place."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-terrain.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Rojo 7.7.1; new disposable local terrain place (.rbxlx)",
+          "result": "pass",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Terrain voxels and original-place Rojo connection diff; preserve original place. 2026-10-16: connection diff additions-only (+ DataModel.Name), terrain voxel checksum identical, original file hash unchanged."
     },
     {
       "id": "datastore-engine-shutdown-restart",
