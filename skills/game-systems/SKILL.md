@@ -16,7 +16,7 @@ local ServerKit = game:GetService("ServerScriptService"):WaitForChild("Kit")
 local PlayerData = require(ServerKit:WaitForChild("PlayerData")) -- server
 local DebugHooks = require(ServerKit:WaitForChild("DebugHooks")) -- server
 ```
-Read the library source in `src/kit/` when you need details; the headers document every function.
+**Exact signatures, types and options for every Kit function are in `tools/KIT_API.md` (~15 KB).** Read that card instead of the library source; open `src/kit/` only when the card doesn't answer the question.
 
 ## Non-negotiables
 1. **Server is the authority.** Clients ask (`Net.fireServer`), the server decides (prices, cooldowns, damage, rewards) and tells clients (`Net.fire`). Never trust a client-sent amount, price, position or target without checking it against server state.
