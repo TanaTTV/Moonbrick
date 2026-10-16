@@ -37,8 +37,13 @@ root="$(pwd -W 2>/dev/null || pwd)"
 out="$(cat "$tmp/types-out" "$tmp/lint-out" | tr '\\' '/' \
 	| awk -v r="$root/" 'BEGIN { r = tolower(r) } { if (index(tolower($0), r) == 1) $0 = substr($0, length(r) + 1); print }' \
 	| sed -e 's# \[game/[^]]*\]##' \
-	| grep -vE '^\[(INFO|WARN)\]|^Results:|^[0-9]+ (errors|warnings|parse errors)|^[[:space:]]*$' | sort -u)"
-[ -n "$out" ] && printf '%s\n' "$out"
+	| grep -vE '^\[(INFO|WARN)\]|^Results:|^[0-9]+ (errors|warnings|parse errors)|^[[:space:]]*$' | awk '!seen[$0]++')"
+# Keep multi-line diagnostics in order, and cap the output so one broken file can't flood the session.
+if [ -n "$out" ]; then
+	total="$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+	printf '%s\n' "$out" | head -n 40
+	[ "$total" -le 40 ] || echo "... $((total - 40)) more lines; fix the first errors and re-run"
+fi
 if [ "$luau_status" -ne 0 ] || [ "$lint_status" -ne 0 ]; then
 	echo "error: luau-lsp exit=$luau_status; selene exit=$lint_status"
 	[ -n "$out" ] || cat "$tmp/types-out" "$tmp/lint-out"
