@@ -81,6 +81,8 @@ def validate(data):
                 errors.append(f"{label}: evidence {n} invalid result")
         if status == "passed" and evidence and not any(isinstance(e, dict) and e.get("result") == "pass" for e in evidence):
             errors.append(f"{label}: passed requires a pass result")
+        if status == "passed" and any(isinstance(e, dict) and e.get("result") == "fail" for e in evidence):
+            errors.append(f"{label}: passed cannot include a fail result")
     return errors, counts
 
 
