@@ -36,3 +36,22 @@ Limitations: the static `rock.fbx`/`crystal.fbx` fixtures were not imported; the
 The owner imported `rig.fbx` again through the Animation Editor (no exporter or file change). The resulting `RBX_ANIMSAVES.rig.rig_Scene` has top pose `SkinnedMesh` and Root keys 0 → −0.3 → 0 rad (no −90° offset). Playtest playback via KeyframeSequenceProvider: Root −0.298 / Tip +0.298 at 0.5 s, and the screenshot shows the rig standing upright and bending. So **one Animation Editor import was tilted and one was correct**, and the cause of the difference is unknown. The exporter root-cause theory above is therefore unconfirmed. Status moved from failed to **pending**: one clean repeat (delete the saved clips, import once via the Animation Editor, play) decides it.
 
 Note: Animation Editor clips only play in a running game when a script loads and plays them (and a published game needs an uploaded animation ID). The rig not animating in an ordinary Play session is expected, not a defect.
+
+## Clean repeat (default settings) — flat, reproduced
+
+The owner deleted all saved clips and re-imported via Animation Editor with default Import Settings: `rig_Scene` again had Root −1.571 at t=0 and −1.871 at 0.5 s, so the rig lay flat. A trial exporter change (`bake_space_transform=True` for rigs) only rotated the mesh object and left the armature bones unchanged (Blender's Apply Transform is experimental for armatures). Studio produced the same flat clip, so the change was reverted.
+
+## Resolution — Rest Pose Source
+
+The Animation Editor's Import Settings offer **Rest Pose Source**: *Imported Rig (Zeroed Rotations)* (default), *Imported Rig*, *Animation Editor Rig*. Clean run: delete `RBX_ANIMSAVES`, keep the imported rig, Animation Editor → Import → From File → the **original, unchanged** `rig.fbx`, Rig Type Custom, **Rest Pose Source = Imported Rig**, Scale Unit Stud, Import, Save.
+
+| Time | Root X (rad) | Tip X (rad) |
+|---|---|---|
+| 0.00 | 0.000 | 0.000 |
+| 0.25 | −0.150 | +0.150 |
+| 0.50 | −0.300 | +0.300 |
+| 1.00 | 0.000 | 0.000 |
+
+The saved clip matches the Blender keys exactly (top pose `SkinnedMesh`). In playtest, KeyframeSequenceProvider playback measured Root −0.299 / Tip +0.299 at 0.5 s, and the screenshot shows the rig upright and bending. The owner observed it upright in the editor too. **Result: pass**, conditional on the documented setting. `skills/assets/SKILL.md` now requires Rest Pose Source = Imported Rig, matching Scale Units, and warns against the importer's auto-saved `Scene` clip.
+
+Not exercised: Meters scale unit; R15/avatar rigs; multiple clips.

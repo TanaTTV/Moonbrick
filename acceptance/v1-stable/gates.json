@@ -48,22 +48,16 @@
     },
     {
       "id": "blender-studio-rig-animation",
-      "status": "pending",
+      "status": "passed",
       "evidence": [
         {
-          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md",
-          "environment": "Blender 5.2.2 LTS; Roblox Studio 0.743.0.7431133 3D Importer default unit + Animation Editor; new local review place",
-          "result": "fail",
-          "date": "2026-10-16"
-        },
-        {
-          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md#update--owner-re-import-same-day",
-          "environment": "Roblox Studio 0.743.0.7431133 Animation Editor re-import; playtest playback",
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md#resolution--rest-pose-source",
+          "environment": "Blender 5.2.2 LTS export (unchanged exporter); Roblox Studio 0.743.0.7431133 3D Importer (Stud) + Animation Editor Import From File, Rest Pose Source = Imported Rig; playtest playback",
           "result": "pass",
           "date": "2026-10-16"
         }
       ],
-      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback. 2026-10-16: bones/skinning OK, but playback wrong: importer clip ignores Root (top pose FixtureRig), Animation Editor clip bakes a -90 deg X offset so the rig lies flat. Exporter fix required. Re-import via Animation Editor played upright and correct; first import was tilted. Contradictory, so pending until one clean repeat."
+      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback. 2026-10-16: with the default Rest Pose Source (Zeroed Rotations) the rig played lying flat (reproduced twice, see report); with Rest Pose Source = Imported Rig the clip matches Blender exactly and plays upright. The assets skill now requires that setting. Meters scale unit not exercised."
     },
     {
       "id": "terrain-import",
