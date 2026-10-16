@@ -1,7 +1,11 @@
 """Offline safety checks for the V1-stable evidence ledger validator."""
+import contextlib
 import copy
 import importlib.util
+import io
+import json
 from pathlib import Path
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,12 +20,23 @@ def base():
 
 
 class StableAcceptanceTests(unittest.TestCase):
-    def test_default_is_valid_but_not_ready(self):
+    def test_checked_in_ledger_is_valid(self):
+        self.assertEqual(_validator.validate(base())[0], [])
+
+    def test_pending_ledger_is_valid_but_not_ready(self):
         data = base()
+        for gate in data["gates"]:
+            gate.update(status="pending", evidence=[])
+            gate.pop("approved_by", None)
+            gate.pop("reason", None)
         errors, counts = _validator.validate(data)
         self.assertEqual(errors, [])
         self.assertEqual(counts["pending"], len(_validator.REQUIRED_GATES))
-        self.assertEqual(_validator.main(["--release"]), 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gates.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(_validator.main(["--release", "--file", str(path)]), 1)
 
     def test_missing_gate_cannot_be_removed_to_fake_readiness(self):
         data = base()
