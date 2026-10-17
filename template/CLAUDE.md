@@ -9,9 +9,9 @@ Roblox game built with Rojo. Code and generated world objects live on disk and s
 | `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` | game client code |
 | `src/shared/` | `ReplicatedStorage.Shared` | config + modules used by both |
 | `src/world/` | `Workspace.World` | objects built via MCP, exported as `.model.json` |
-| `src/kit/` | `ReplicatedStorage.Kit`, `ServerScriptService.Kit` | VFX/UI/Net, PlayerData/Cooldown/Round/Economy/DebugHooks. Managed by `/moonbrick:update`; wrap instead of editing |
+| `src/kit/` | `ReplicatedStorage.Kit`, `ServerScriptService.Kit` | VFX/UI/Net, PlayerData/Cooldown/Round/Economy/DebugHooks. Managed by `/moonbrick:update`; wrap instead of editing. **API: `tools/KIT_API.md`** (read it, not the source) |
 | `tests/` | `ServerStorage.Tests` | `*.spec.luau` unit tests (`tests/kit/` = kit's own) |
-| `tools/` | `ServerStorage.MCPKit` | MCP helper + `check.sh` |
+| `tools/` | `ServerStorage.MCPKit` | MCP helper, `check.sh`, `KIT_API.md`, copy-ready `recipes/` (not synced) |
 
 `Foo.server.luau` = Script, `Foo.client.luau` = LocalScript, `Foo.luau` = ModuleScript, `Foo.model.json` = instances. Anything else (hand-built map, terrain, lighting) stays in the place file — never add Workspace/Lighting properties to `default.project.json`, it would overwrite Studio's copy.
 

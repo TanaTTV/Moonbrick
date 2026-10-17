@@ -158,7 +158,8 @@ def prepare(batch, conditions=None, reps=3):
                 tools=tools(), user_config_before=user_config_snapshot(),
                 git_status_before=command(['git', 'status', '--porcelain'])['stdout'],
                 template_hashes={p.name: digest(p) for p in [ROOT / 'template/.luaurc', ROOT / 'template/selene.toml', ROOT / 'template/tools/check.sh']})
-    if spec['branch'] != 'dev/v1-beta-bench':
+    # Measure only from known benchmark branches; perf/kit-api-card measures the API card + recipes change.
+    if spec['branch'] not in ('dev/v1-beta-bench', 'perf/kit-api-card'):
         raise RuntimeError('wrong benchmark branch')
     for name, path in spec['tools'].items():
         spec.setdefault('tool_versions', {})[name] = command([path, '--version'])

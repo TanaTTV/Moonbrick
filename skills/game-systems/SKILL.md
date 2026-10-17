@@ -16,7 +16,7 @@ local ServerKit = game:GetService("ServerScriptService"):WaitForChild("Kit")
 local PlayerData = require(ServerKit:WaitForChild("PlayerData")) -- server
 local DebugHooks = require(ServerKit:WaitForChild("DebugHooks")) -- server
 ```
-Read the library source in `src/kit/` when you need details; the headers document every function.
+**Exact signatures, types and options for every Kit function are in `tools/KIT_API.md` (~15 KB).** Read that card instead of the library source; open `src/kit/` only when the card doesn't answer the question.
 
 ## Non-negotiables
 1. **Server is the authority.** Clients ask (`Net.fireServer`), the server decides (prices, cooldowns, damage, rewards) and tells clients (`Net.fire`). Never trust a client-sent amount, price, position or target without checking it against server state.
@@ -44,29 +44,8 @@ Inspect server `Net.stats()` for copied per-remote `total`, `reasons` and `disti
 **Server genre systems**: `Cooldown.new(clock?)` → `use(player, seconds)`, `remaining`, `clear`, `prune`; `Round.new({minPlayers, intermission, duration, results, clock?})` → `step(serverPlayerCount)`, `snapshot`, Studio-driver `skip`; `Economy.buy(data, serverCatalog, itemId)` / `award(data, amount)` are pure integer-currency rules for `PlayerData.update`. Clear player-keyed state on leave. These helpers do not process paid product receipts.
 
 ## Recipes
-**Purchase**
-```lua
--- server
-Net.on("Buy", { Net.oneOf("Sword", "Bow") }, function(player, itemId)
-	local price = Shop[itemId].price -- server-side table, never client-sent
-	local data = PlayerData.get(player)
-	if not data or data.Coins < price or table.find(data.Inventory, itemId) then
-		return Net.fire(player, "Toast", "Can't buy that")
-	end
-	PlayerData.update(player, function(d)
-		d.Coins -= price
-		table.insert(d.Inventory, itemId)
-	end)
-	if not PlayerData.save(player) then
-		warn("Purchase applied locally; save failed and will be retried")
-		return Net.fire(player, "Toast", "Purchase applied; saving is delayed")
-	end
-	Net.fire(player, "Bought", itemId)
-end, { rate = 3 })
-```
-**Cooldown** — keep `lastUsed[player]` on the server; reject early calls in the handler; clear on `PlayerRemoving`.
-**Pickups** — tag parts (`CollectionService`), set up per tag on the server, `VFX.glow` for idle, `VFX.burst` on collect, respawn with `task.delay`; add a `ProximityPrompt` if collection needs input.
-**Round loop** — one server state machine (`"Intermission" | "Playing" | "Ended"`), broadcast with `Net.fireAll("Round", state, timeLeft)`, clients render it; hooks `skip`, `state`.
+Start from a checked recipe instead of writing from scratch: `tools/recipes/` has `Data` (the one `PlayerData.start`), `Pickups` (touch-to-collect saved coins), `Ability` (Q/X/touch area attack with cooldown + VFX) and `Shop` (server-priced purchase + UI). Copy each recipe's `server/`, `client/`, `shared/` files into `src/server/`, `src/client/`, `src/shared/`, then adapt names and numbers. They already pass `tools/check.sh`.
+**Round loop** — one `Round.new` controller stepped on one server loop, broadcast `snapshot` with `Net.fireAll`, clients render it; hooks `skip`, `state`.
 
 ## Before you finish a feature
 `bash tools/check.sh` → specs for rule-heavy logic in `tests/` → playtest recipe (studio skill) including UI recording → `K.audit()` (Edit mode) → commit.
