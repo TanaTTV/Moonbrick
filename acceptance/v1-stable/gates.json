@@ -30,8 +30,15 @@
     {
       "id": "streaming-streamout",
       "status": "pending",
-      "evidence": [],
-      "notes": "Extended map; actual stream-out/in, late crystal state, 2-player authority."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-streaming-solo.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo; new local Crystal Rush place + disposable walkway, StreamOutBehavior Opportunistic",
+          "result": "inconclusive",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Extended map; actual stream-out/in, late crystal state, 2-player authority. 2026-10-18 solo: real stream-out/in, HUD without crystals, late claimed and reset state, distant/duplicate/teleport denial all passed; 2-player Local Server part still required."
     },
     {
       "id": "blender-studio-static-pbr",
