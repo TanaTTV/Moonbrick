@@ -84,6 +84,11 @@ local Vector3 = {
 		return { _type = "Vector3", X = x, Y = y, Z = z, Magnitude = math.sqrt(x * x + y * y + z * z) }
 	end,
 }
+local Color3 = {
+	fromRGB = function(r, g, b)
+		return { _type = "Color3", R = r / 255, G = g / 255, B = b / 255 }
+	end,
+}
 local function typeof(value)
 	return type(value) == "table" and value._type or type(value)
 end

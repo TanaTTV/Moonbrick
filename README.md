@@ -4,12 +4,12 @@
 
 <p align="center">
   <b>A Claude Code plugin that makes AI genuinely good at Roblox development.</b><br>
-  Real files, real type checking, real playtests, and visuals that don't look like a placeholder.
+  Real files, real type checking, real playtests, and games that don't look like a placeholder.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8b5cf6?style=flat-square"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.0--beta.1-ff6b6b?style=flat-square">
+  <a href="https://github.com/TanaTTV/Moonbrick/releases"><img alt="Release" src="https://img.shields.io/github/v/release/TanaTTV/Moonbrick?include_prereleases&style=flat-square&color=ff6b6b"></a>
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=flat-square">
   <img alt="Luau" src="https://img.shields.io/badge/Luau-strict-00a2ff?style=flat-square">
   <img alt="Rojo" src="https://img.shields.io/badge/Rojo-7.7-e13835?style=flat-square">
@@ -17,73 +17,103 @@
 </p>
 
 <p align="center">
+  <a href="#-showcase">Showcase</a> ·
   <a href="#install">Install</a> ·
   <a href="#-what-you-get">Features</a> ·
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-game-libraries">Libraries</a> ·
-  <a href="#-roadmap">Roadmap</a>
+  <a href="#-tested-for-real">Testing</a>
 </p>
 
 ---
 
+## 🎮 Showcase
+
+### Element Brawl: a Smash-style fighter, built with Moonbrick
+
+<p align="center">
+  <img src=".github/assets/brawl-stage.jpg" alt="Four elemental fighters on the Sky Shrine stage with a Smash-style damage HUD" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/brawl-clash.jpg" alt="Fighters clash with element-coloured hit sparks"></td>
+    <td width="50%"><img src=".github/assets/brawl-air.jpg" alt="A fighter is launched from the Fire platform"></td>
+  </tr>
+</table>
+
+Pick **Fire, Ice, Storm or Wind**, rack up damage on your rivals and launch them off a floating shrine. Damage is a percentage, not health: the higher it climbs, the further the next hit sends you. Each element has its own special (Flame Dash, Frost Lance, Thunder Blink, Gale Burst). Everyone gets a double jump and a recovery jump, a side-on camera that frames every fighter, KO bursts, screen shake and a damage HUD that punches with every hit. Bots fill empty slots, so it is fun solo. Keyboard, gamepad and touch are all supported.
+
+It is all server-authoritative and built from Moonbrick's libraries: **Net** (validated, rate-limited attacks), **Cooldown**, **Round** (Waiting → Intermission → Playing → Results), **PlayerData** (saved Wins/KOs), **VFX** and **UI**. The knockback, blast-zone, hit-box and tie-break rules are pure and unit tested in CI. The stage is parts only, so it needs no uploads.
+
+```bash
+python scripts/create-example.py my-brawl --example element-brawl   # then: tools/check.sh, rojo build, Play
+```
+
+[How it plays and what it shows off →](examples/element-brawl/README.md)
+
+### Reyna's Leer, end to end
+
 <p align="center">
   <img src=".github/assets/showcase-leer.jpg" alt="Reyna's Leer from Valorant, built in Roblox with Moonbrick" width="100%">
-  <br><sub><i>Reyna's Leer from Valorant, built end-to-end with Moonbrick: first-person viewmodel, cast choreography, an eye that flies through walls, and Nearsight. Every texture was drawn by code, uploaded, playtested and screenshot-reviewed by Claude.</i></sub>
+  <br><sub><i>First-person viewmodel, cast choreography, an eye that flies through walls, and Nearsight. Every texture was drawn by code, uploaded, playtested and screenshot-reviewed by Claude.</i></sub>
 </p>
 
 ## ✨ Why Moonbrick
 
 AI can write Luau, but Roblox development with AI usually goes like this: slow tool calls that dump walls of text, scripts edited blind inside Studio, bugs found only after a playtest, and results that *work* but look low budget.
 
-Moonbrick fixes the workflow end to end:
-
 | Without Moonbrick | With Moonbrick |
 |---|---|
 | Claude edits scripts through Studio, one slow call at a time | Claude edits **real files**; Rojo syncs them into Studio instantly |
 | Bugs show up mid-playtest | **Strict type checking + linting** fail closed before you press Play |
-| Testing requires repeated manual inspection | Debug hooks, bounded UI/camera/effect recorders and filtered logs support batched checks |
-| Hierarchy inspection returns detailed paths/relationships | Compact tree output used **89.2% fewer characters** in a controlled fixture; [timings and limits](docs/BENCHMARKS.md) |
-| Every feature written from scratch | **Ready-made systems**: VFX, UI, secure remotes, saved data |
+| Testing means clicking around | **Debug hooks**, frame recorders and filtered logs let Claude drive and check features itself |
+| Every feature written from scratch, with naive saves | **Ready-made systems**: VFX, UI, secure remotes, session-locked saved data, rounds, cooldowns |
+| Claude reads the whole library to learn it | A generated **15 KB API card** and **checked recipes** ship with every project |
 | "It works" = done | **Design-first**: reference images, drawn textures, screenshot review |
+
+**What it costs:** in a same-batch benchmark of the same small task, Moonbrick runs cost the same as plain Claude Code ($0.217 vs $0.220 median), finished about **23% faster**, and every one used session-locked saves and validated remotes, which the plain runs didn't. One task and three runs per side, so read the [benchmark](docs/BENCHMARK.md) before quoting it.
 
 <a id="install"></a>
 
-## 📦 Install / Upgrade
+## 📦 Install
 
 You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), Python 3.10+, `git` and `curl`. On Windows, use Git Bash. Blender is optional.
 
-Install a local checkout with the non-model Claude Code CLI (verified on 2.1.296):
+In Claude Code:
+
+```text
+/plugin marketplace add TanaTTV/Moonbrick
+/plugin install moonbrick@moonbrick
+/reload-plugins
+```
+
+Or from a terminal, for a local checkout:
 
 ```bash
 claude plugin marketplace add /absolute/path/to/Moonbrick
 claude plugin install moonbrick@moonbrick
-claude plugin list --json
+claude plugin list --json      # shows moonbrick@moonbrick, enabled: true
 ```
 
-The list must show `moonbrick@moonbrick` with `enabled: true`. In a Claude Code session you can also add the published marketplace with `/plugin marketplace add TanaTTV/Moonbrick`, then `/plugin install moonbrick@moonbrick`. The acceptance test uses a local checkout, not the remote marketplace.
-
-**Upgrading an installed 0.1.0 copy:** point the same marketplace at the new source, refresh it, then update:
-
-```bash
-claude plugin marketplace add /absolute/path/to/Moonbrick   # or keep TanaTTV/Moonbrick
-claude plugin marketplace update moonbrick
-claude plugin update moonbrick@moonbrick
-claude plugin list --json
-```
-
-The version changed (0.1.0 → 1.0.0-beta.1), so `update` replaces the cached copy; the acceptance test checks that no 0.1.0 file survives. Restart Claude Code or run `/reload-plugins` to load the new skills/hooks. Updating the plugin does not migrate existing games; run `/moonbrick:update` in each game afterward. If you install from a local checkout whose version did not change, `update` keeps the old cached files (Claude Code 2.1.296): `claude plugin uninstall moonbrick@moonbrick` then `install` refreshes it.
-
-Run `python scripts/test-install.py` to verify isolated fresh installation, an actual `v0.1.0` plugin upgrade, exact installed file hashes, empty-cache tool setup, scaffolding/check/build from the installed cache, and SessionStart. It uses temporary Claude/home/tool directories, stops its own Rojo server, cleans up, and checks the real plugin directory's listing/mtimes. `--skip-tools` checks installation/upgrade and scaffolding without tool downloads or the positive server test. Neither mode starts a Claude model session. Actual in-session `/reload-plugins` and the remote marketplace are separate manual checks.
-
-Then start your first game in Claude Code:
+Then start your first game:
 
 ```text
 /moonbrick:new my-game
 ```
 
-Start with the command (or say "use Moonbrick"): in our benchmark, Claude did not pick up the skills on its own for a terse "make a Roblox game" request ([details](docs/BENCHMARK.md)). Inside a Moonbrick project, the generated `CLAUDE.md` points it at the skills.
+The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) with pinned Rojo, luau-lsp, Selene and StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, review the connection diff, and ask for what you want ("add a coin shop", "make the ability feel punchier"). Start with the command or say "use Moonbrick": for a terse "make a Roblox game", Claude didn't pick up the skills on its own in our benchmark.
 
-The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) 1.2.0 and pinned Rojo/luau-lsp/Selene/StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, and review the connection diff. This is a **beta** (`1.0.0-beta.1`). What was tested, and what was not, is listed per requirement in the [V1 beta ledger](docs/V1-BETA-LEDGER.md).
+<details>
+<summary><b>Upgrading from 0.1 or a beta</b></summary>
+
+```bash
+claude plugin marketplace update moonbrick
+claude plugin update moonbrick@moonbrick
+```
+
+Restart Claude Code or run `/reload-plugins`. Updating the plugin does not touch your games; run `/moonbrick:update` in each game to refresh its bundled Kit (your game files are preserved and backed up). If you install from a local checkout whose version did not change, `claude plugin uninstall moonbrick@moonbrick` then `install` refreshes the cache. `python scripts/test-install.py` verifies fresh install, upgrade, file hashes and scaffolding in isolated directories.
+</details>
 
 ## 🧰 What you get
 
@@ -91,29 +121,33 @@ The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx
 
 | Command | What it does |
 |---|---|
-| `/moonbrick:new` | New game project: Rojo sync, strict types, linting, formatting, tests, debug hooks, git. Ready in seconds. |
-| `/moonbrick:import` | Bring an **existing game** in: its scripts become files via Rojo syncback; your map stays in the place file. |
+| `/moonbrick:new` | New game project: Rojo sync, strict types, linting, formatting, tests, debug hooks, API card, recipes, git. Ready in seconds. |
+| `/moonbrick:import` | Bring an **existing game** in: its scripts become files via Rojo syncback; your map and terrain stay in the place file. |
 | `/moonbrick:playtest` | Verify a feature in a real playtest: unit tests, hook-driven actions, recorded UI/camera/effects, filtered error logs. |
 | `/moonbrick:review` | Code, security, performance, mobile/console and **screenshot-based design** review → a prioritized fix list. |
 | `/moonbrick:ship` | Pre-publish checklist including player-data safety, then a tagged release. |
 | `/moonbrick:update` | Update a project's bundled Moonbrick code to the installed version. |
-| `/moonbrick:assets` | Optional native Blender workflow: shared art style/budgets, local FBX export, source hashes and Studio import review. |
+| `/moonbrick:assets` | Optional Blender workflow: shared art style and budgets, FBX export, and the exact Studio import settings for meshes, PBR and rigs. |
 
 ### Skills (load automatically when relevant)
 
 - **`studio`**: the fast, token-efficient way to drive Roblox Studio, plus hard-won gotchas (new avatar joints, flipbook quirks, edit-mode require caching…).
-- **`game-systems`**: server authority, exploit-proof remotes, data saving, and recipes (purchases, cooldowns, pickups, round loops).
+- **`game-systems`**: server authority, exploit-proof remotes, data saving, and pointers to the project's API card and recipes.
 - **`game-design`**: design docs, game feel ("juice"), first-time experience, mobile/console support, visual review, fair monetization.
 
-### MCPKit (inside Studio)
+### In every project
 
-A Luau helper that makes every MCP call short and its output tiny:
+- **`tools/KIT_API.md`**: every Kit function with exact signatures, generated from the source (about 15 KB instead of 65 KB of code), so Claude reads less and guesses nothing.
+- **`tools/recipes/`**: copy-ready, type-checked features: saved data, coin pickups, a Q / X / touch ability with cooldown and effects, and a shop. CI drops each into a fresh project and builds it.
+- **`tools/check.sh`**: strict types + lint in one command; errors stay in order and are capped so one broken file can't flood a session.
+
+### MCPKit (inside Studio)
 
 ```lua
 local K = require(game.ServerStorage.MCPKit)
 K.tree("Workspace", 2)                 -- compact tree instead of 20 KB of JSON
-K.test()                               -- run unit tests: "18 passed, 0 failed"
-K.hook("Leer", "cast")                 -- drive a feature without clicking
+K.test()                               -- run unit tests: "61 passed, 0 failed"
+K.hook("Brawl", "state")               -- drive a feature without clicking
 K.record("ui", fn) ; K.results("ui")   -- capture what happened, frame by frame
 K.logs()                               -- only warnings/errors since the mark
 K.audit()                              -- deprecated APIs, unvalidated remotes, console-unfriendly input
@@ -132,9 +166,9 @@ flowchart LR
     S -->|tests · hooks · recorders · logs · screenshots| C
 ```
 
-- **Code lives in files.** Rojo mirrors managed files into Studio. Service boundaries preserve unknown content; mapped folders are owned by their files. Imported Workspace/terrain/lighting stay in the original place. Always review the connection diff, including same-name object collisions.
-- **Studio is for building and testing.** MCP calls go through MCPKit one-liners; playtests are driven by Studio-only debug hooks, so no fragile mouse simulation.
-- **Everything is checked.** Strict Luau types, selene lint, unit tests in a real server VM, and screenshots for anything visual.
+- **Code lives in files.** Rojo mirrors managed files into Studio. Imported Workspace, terrain and lighting stay in the original place. Always review the connection diff.
+- **Studio is for building and testing.** MCP calls go through MCPKit one-liners; playtests are driven by Studio-only debug hooks, not fragile mouse simulation.
+- **Everything is checked.** Strict Luau types, Selene lint, unit tests in a real server VM, and screenshots for anything visual.
 - **A session hook keeps `rojo serve` running** for whichever project you open.
 
 <details>
@@ -148,7 +182,7 @@ src/world/    -> Workspace.World                   tools/MCPKit.luau -> ServerSt
 ```
 </details>
 
-## 🎮 Game libraries
+## 🧱 Game libraries
 
 Copied into every project under `src/kit/`, so your game never depends on the plugin at runtime.
 
@@ -157,48 +191,53 @@ Copied into every project under `src/kit/`, so your game never depends on the pl
 | **VFX** | One-call effects: shockwave, energy sphere, light pillar, bursts, auras, glows, highlights, camera shake, flash, FOV punch, colour-grade spikes, title slams |
 | **UI** | Themed buttons, panels, labels and toasts with hover/press/pulse/pop animation, a 48 px touch minimum and gamepad support. Restyle everything from one theme table. |
 | **Net** | Remotes with per-argument validation (rejects wrong types, NaN/∞, extra args) and per-player rate limits |
-| **PlayerData** | Session tokens, serialized snapshot saves, retries, shutdown tracking, template reconcile, nonyielding transactions and a memory-only Studio default |
+| **PlayerData** | Session-locked saves, retries with backoff, autosave, save on leave and shutdown, template reconcile, nonyielding transactions and a memory-only Studio default |
 | **Cooldown / Round / Economy** | Server cooldown gates, a deterministic multiplayer round controller, and validated in-game currency/purchase rules |
 | **DebugHooks** | Studio-only actions so tests can drive features without clicking; absent in live games |
 
 ```lua
 -- a secure purchase in a few lines
 Net.on("Buy", { Net.oneOf("Sword", "Bow") }, function(player, item)
-	local data = PlayerData.get(player)
-	if not data or data.Coins < Shop[item].price then return end
-	PlayerData.update(player, function(d) d.Coins -= Shop[item].price; table.insert(d.Inventory, item) end)
-	VFX.burst(player.Character.HumanoidRootPart)
+	local bought = false
+	PlayerData.update(player, function(data)
+		bought = Economy.buy(data, Catalog, item)
+	end)
+	if bought then
+		VFX.burst(player.Character.HumanoidRootPart)
+	end
 end, { rate = 3 })
 ```
 
-Game libraries are strictly typed and have specs under `tests/kit/`. Dynamic MCPKit inspection is explicitly nonstrict and linted. [Validation instructions](docs/DEVELOPMENT.md) cover host/headless/isolated Studio tests; real multi-client and provider gates remain separate.
-
 ## 🎨 Design-first
 
-Good-looking games come from art, not code. Moonbrick's design workflow:
+Good-looking games come from art, not code:
 
 1. **Reference first.** Share screenshots of what you want; they drive every decision.
-2. **Images over primitives.** Effects are built from textures on particles and billboards, drawn by code and uploaded to your account, or taken from vetted packs.
-3. **Screenshot review.** Claude captures key moments in Studio (edit or play mode), compares them against your references, and fixes what's off before calling anything done.
+2. **Images over primitives.** Effects are built from textures on particles and billboards, drawn by code or made in Blender, or taken from vetted packs.
+3. **Screenshot review.** Claude captures key moments in Studio, compares them against your references, and fixes what's off before calling anything done. Element Brawl's stage went through four rounds of exactly this.
 
 <p align="center">
   <img src=".github/assets/leer-textures.png" alt="Textures drawn by code for the Leer ability" width="80%">
-  <br><sub><i>Leer's eye and 16-frame anime flame flipbook, drawn with Python and uploaded through Studio.</i></sub>
+  <br><sub><i>Leer's eye and 16-frame anime flame flipbook, drawn with Python and uploaded through Studio. The banner at the top of this page is a Blender scene built by a script in <code>.github/assets/blender/</code>.</i></sub>
 </p>
+
+## 🔬 Tested for real
+
+Every change runs host tests, a headless Luau suite (PlayerData, Net, gameplay and both examples' rules), strict analysis of the Kit and examples, fresh-scaffold builds of the template, recipes and both examples, Rojo import fidelity, and an isolated plugin install/upgrade, on Windows, macOS and Linux.
+
+Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/V1-BETA-LEDGER.md)).
 
 ## 🗺 Roadmap
 
 - [ ] **Safe Creator Store assets:** search and insert with quarantine, a backdoor scan and export to files
 - [ ] **Community kit library:** share and install reusable systems (shops, abilities, round loops) as kits
 - [ ] Design-review rubric, lighting presets, and the texture generator as a reusable tool
-- [x] Optional native Blender → FBX export with budgets/source hashes and actual Blender static-prop round-trip tests
-- [ ] Blender FBX → Studio rendered mesh/rig/PBR import acceptance
-- [x] Verified macOS run (CI passes on macOS; reports from real machines still welcome)
-- [ ] Real-device touch/gamepad check and the remaining live DataStore scenarios (engine shutdown, natural lock expiry, two servers)
+- [ ] Real-device touch/gamepad reports and the remaining live DataStore scenarios (natural lock expiry, two independent servers)
+- [x] Blender → Studio mesh, PBR and rig import, with the exact importer settings documented
+- [x] API card and checked recipes in every project
+- [x] Element Brawl showcase
 
-See [ROADMAP.md](ROADMAP.md) for details.
-
-Try the buildable [Crystal Rush example](examples/crystal-rush/README.md): `python scripts/create-example.py <new-folder>`. It exercises rounds, pickups, cooldowns, saved coins, server-fed UI and debug hooks; rendered gameplay acceptance is documented separately.
+See [ROADMAP.md](ROADMAP.md) for details. The [Crystal Rush example](examples/crystal-rush/README.md) is a smaller collection game that exercises streaming, pickups and saved coins.
 
 ## 🤝 Contributing
 
@@ -206,6 +245,6 @@ Issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Found a Robl
 
 ## 🙏 Built on
 
-[Rojo](https://rojo.space) · [Rokit](https://github.com/rojo-rbx/rokit) · [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) · [selene](https://github.com/Kampfkarren/selene) · [StyLua](https://github.com/JohnnyMorganz/StyLua) · [Claude Code](https://claude.com/claude-code) · the Roblox Studio MCP
+[Rojo](https://rojo.space) · [Rokit](https://github.com/rojo-rbx/rokit) · [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) · [selene](https://github.com/Kampfkarren/selene) · [StyLua](https://github.com/JohnnyMorganz/StyLua) · [Blender](https://www.blender.org) · [Claude Code](https://claude.com/claude-code) · the Roblox Studio MCP
 
-<p align="center"><sub>MIT © TanaTTV · Not affiliated with Roblox Corporation or Anthropic.</sub></p>
+<p align="center"><sub>MIT © TanaTTV · Not affiliated with Roblox Corporation, Nintendo or Anthropic.</sub></p>
