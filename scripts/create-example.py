@@ -6,6 +6,7 @@ import shutil
 
 from project import new_project
 import brawl_map
+import showcase_maps
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,7 +76,30 @@ def create_brawl(target):
     print(f"Element Brawl created at {target}. Run tools/check.sh, build/connect Rojo, then test in a dedicated place.")
 
 
-EXAMPLES = {"crystal-rush": create, "element-brawl": create_brawl}
+def create_showcase(target, title, folder, world, lighting):
+    """A V1.1 showcase: example sources + a generated world and lighting (no streaming, one scene)."""
+    new_project(target, title)
+    example = ROOT / "examples" / folder
+    for sub in ("src", "tests"):
+        if (example / sub).exists():
+            shutil.copytree(example / sub, target / sub, dirs_exist_ok=True)
+    project_path = target / "default.project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["tree"]["Workspace"]["$properties"] = {"StreamingEnabled": False}
+    project["tree"]["Lighting"] = lighting()
+    project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8", newline="\n")
+    scene, backdrop = world()
+    for name, model in (("Scene", scene), ("Backdrop", backdrop)):
+        (target / f"src/world/{name}.model.json").write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8", newline="\n")
+    shutil.copyfile(example / "README.md", target / "EXAMPLE.md")
+    print(f"{title} created at {target}. Run tools/check.sh, rojo build, then open the new place in Studio.")
+
+
+def create_collapse(target):
+    create_showcase(target, "Celestial Collapse", "celestial-collapse", showcase_maps.collapse_world, showcase_maps.collapse_lighting)
+
+
+EXAMPLES = {"crystal-rush": create, "element-brawl": create_brawl, "celestial-collapse": create_collapse}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
