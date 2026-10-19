@@ -1,6 +1,6 @@
 # Roadmap
 
-The `1.0.0-beta.1` acceptance evidence, including what is still untested, is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md); earlier history is in [docs/V1-STATUS.md](docs/V1-STATUS.md). A stable 1.0 still needs real-device touch/gamepad checks, Blender FBX import/rendering in Roblox, terrain import and the extra live DataStore scenarios. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+The 1.0 stable gates and their evidence, including what is still untested, are in [acceptance/v1-stable/](acceptance/v1-stable/) (proposed waivers: [WAIVERS.md](acceptance/v1-stable/WAIVERS.md)); the beta evidence is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md) and earlier history in [docs/V1-STATUS.md](docs/V1-STATUS.md). See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Next: Creator Store assets (planned, not started)
 Use the Roblox Creator Store safely from Claude. The Studio MCP already has `search_asset` / `insert_asset`; moonbrick adds the safety and project integration around them.
