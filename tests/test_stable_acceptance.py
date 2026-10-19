@@ -14,21 +14,27 @@ _validator = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_validator)
 
 
-def base():
+def ledger():
     import json
     return json.loads((ROOT / "acceptance/v1-stable/gates.json").read_text(encoding="utf-8"))
 
 
+def base():
+    """The checked-in gate list reset to pending, so fixtures don't depend on recorded results."""
+    data = ledger()
+    for gate in data["gates"]:
+        gate["status"], gate["evidence"] = "pending", []
+        gate.pop("approved_by", None)
+        gate.pop("reason", None)
+    return data
+
+
 class StableAcceptanceTests(unittest.TestCase):
     def test_checked_in_ledger_is_valid(self):
-        self.assertEqual(_validator.validate(base())[0], [])
+        self.assertEqual(_validator.validate(ledger())[0], [])
 
     def test_pending_ledger_is_valid_but_not_ready(self):
         data = base()
-        for gate in data["gates"]:
-            gate.update(status="pending", evidence=[])
-            gate.pop("approved_by", None)
-            gate.pop("reason", None)
         errors, counts = _validator.validate(data)
         self.assertEqual(errors, [])
         self.assertEqual(counts["pending"], len(_validator.REQUIRED_GATES))
