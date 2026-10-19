@@ -93,6 +93,7 @@ export type Layer = {
 	shake: { number }?, -- { duration, strength }
 	fov: { number }?, -- { degrees, seconds }
 	flash: { color: (Color3 | string)?, time: number? }?,
+	grade: { color: (Color3 | string)?, contrast: number?, saturation: number?, time: number? }?, -- screen colour grade
 	-- debris
 	gravity: number?,
 	sizeRange: { number }?,
@@ -308,7 +309,7 @@ export type Loop = { sound: Sound, stop: (fade: number?) -> () }
 > Security → "Allow Mesh & Image APIs". `Tex.alpha` is the pure pixel function shared with fxtex.py.
 
 ```lua
-export type Name = "glow" | "core" | "ring" | "spark" | "star" | "streak" | "smoke" | "dust" | "shard" | "crack" | "wisp"
+export type Name =
 export type Options = {
 	size: number?, -- pixels per side (or per cell for flipbooks), default 128
 	seed: number?,
@@ -368,7 +369,13 @@ export type Builder = {
 	quad: (self: Builder, a: number, b: number, c: number, d: number) -> (),
 	setColor: (self: Builder, color: Color3?) -> (),
 	grid: (self: Builder, rows: { { Vector3 } }, closed: boolean?) -> (),
-	lathe: (self: Builder, profile: { Vector2 }, segments: number, cf: CFrame?, radiusAt: ((number, number) -> number)?) -> (),
+	lathe: (
+		self: Builder,
+		profile: { Vector2 },
+		segments: number,
+		cf: CFrame?,
+		radiusAt: ((number, number) -> number)?
+	) -> (),
 	torus: (self: Builder, radius: number, thickness: number, segments: number?, sides: number?, cf: CFrame?) -> (),
 	tube: (self: Builder, path: { Vector3 }, radius: number | { number }, sides: number?) -> (),
 	box: (self: Builder, cf: CFrame, size: Vector3) -> (),
@@ -377,7 +384,13 @@ export type Builder = {
 	displace: (self: Builder, fn: (Vector3) -> Vector3) -> (),
 	count: (self: Builder) -> number,
 }
-export type PartOptions = { name: string?, material: Enum.Material?, color: Color3?, anchored: boolean?, collision: boolean? }
+export type PartOptions = {
+	name: string?,
+	material: Enum.Material?,
+	color: Color3?,
+	anchored: boolean?,
+	collision: boolean?,
+}
 ```
 
 - `Geo.new(): Builder`

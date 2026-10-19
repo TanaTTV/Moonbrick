@@ -93,6 +93,7 @@ export type Layer = {
 	shake: { number }?, -- { duration, strength }
 	fov: { number }?, -- { degrees, seconds }
 	flash: { color: (Color3 | string)?, time: number? }?,
+	grade: { color: (Color3 | string)?, contrast: number?, saturation: number?, time: number? }?, -- screen colour grade
 	-- debris
 	gravity: number?,
 	sizeRange: { number }?,
@@ -483,12 +484,12 @@ local GeoModule: any = nil
 
 local function effectPart(name: string, shape: string?, material: string?): BasePart
 	local part: BasePart
-	if shape == "torus" then
-		-- A real ring (Geo builds a unit torus once per client and clones it).
+	if shape == "torus" or shape == "shard" then
+		-- Real rings and faceted shards (Geo builds each unit shape once per client and clones it).
 		if not GeoModule then
 			GeoModule = require(script.Parent.Geo)
 		end
-		part = GeoModule.unitTorus():Clone()
+		part = (if shape == "torus" then GeoModule.unitTorus() else GeoModule.unitShard()):Clone()
 	elseif shape == "wedge" then
 		part = Instance.new("WedgePart")
 	else
@@ -817,6 +818,17 @@ local function buildCamera(ctx: Ctx, layer: Layer)
 		if layer.flash then
 			local flash = layer.flash :: { color: (Color3 | string)?, time: number? }
 			vfx().flash({ color = resolveColor(flash.color or "core", ctx.palette), time = flash.time })
+		end
+		if layer.grade then
+			local grade =
+				layer.grade :: { color: (Color3 | string)?, contrast: number?, saturation: number?, time: number? }
+			vfx().grade({
+				color = if grade.color then resolveColor(grade.color, ctx.palette) else nil,
+				contrast = grade.contrast,
+				saturation = grade.saturation,
+				time = grade.time,
+				bloom = 0,
+			})
 		end
 	end)
 end

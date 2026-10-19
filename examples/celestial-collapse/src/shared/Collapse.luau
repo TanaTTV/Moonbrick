@@ -104,13 +104,27 @@ end
 local function orbLayers(style: Style, keys: { Fx.MeshKey }): { Fx.Layer }
 	local layers: { Fx.Layer } = {}
 	if style.orb.form == "sphere" then
+		-- A small white-hot core inside a gold glass body reads as a forming star, not a flat white ball.
+		local core, body = {}, {}
+		for _, k in keys do
+			local size = if type(k.size) == "number" then k.size else nil
+			table.insert(core, Fx.key(k.t, { size = if size then size * 0.55 else nil, ease = k.ease }))
+			table.insert(
+				body,
+				Fx.key(k.t, { size = size, transparency = math.max(k.transparency or 0, 0.35), ease = k.ease })
+			)
+		end
+		table.insert(
+			layers,
+			{ kind = "mesh", name = "OrbCore", shape = "ball", material = "Neon", color = "core", keys = core }
+		)
 		table.insert(layers, {
 			kind = "mesh",
-			name = "OrbCore",
+			name = "OrbBody",
 			shape = "ball",
 			material = style.orb.material,
-			color = "core",
-			keys = keys,
+			color = "glow",
+			keys = body,
 		})
 		local halo = {}
 		for i, k in keys do
@@ -215,6 +229,23 @@ local function orbDefinition(style: Style, timeline: Timeline): Fx.Definition
 		minQuality = "Medium",
 	})
 	add({ kind = "light", at = 0, color = "glow", range = 10, lightKeys = { { 0, 0 }, { timeline.impact, 2.2 } } })
+	add({
+		kind = "particles",
+		name = "StarFlare",
+		at = timeline.rise * 0.4,
+		texture = style.textures.spark,
+		rate = 8,
+		duration = timeline.impact - timeline.rise * 0.4,
+		locked = true,
+		speed = { 0, 0 },
+		lifetime = { 0.35, 0.5 },
+		size = { { 0, size * 0.9 }, { 0.5, size * 1.4 }, { 1, size * 0.6 } },
+		transparency = { { 0, 1 }, { 0.3, 0.15 }, { 1, 1 } },
+		rotation = { 0, 90 },
+		rotSpeed = { -40, 40 },
+		color = "core",
+		zOffset = 1,
+	})
 	add({ kind = "sound", at = 0, id = style.sounds.charge, volume = 0.7 })
 	-- Rise: a ring orbits the swollen orb; sparks shed off it.
 	add({
@@ -224,7 +255,7 @@ local function orbDefinition(style: Style, timeline: Timeline): Fx.Definition
 		shape = "torus",
 		material = "Neon",
 		color = "accent",
-		offset = CFrame.Angles(math.rad(62), 0, math.rad(18)),
+		offset = CFrame.Angles(math.rad(28), 0, math.rad(12)),
 		spin = style.orb.spin * 4,
 		keys = {
 			{ t = 0, size = 0.5, transparency = 1 },
@@ -330,6 +361,10 @@ local function impactDefinition(style: Style): Fx.Definition
 		shake = { 0.8, style.camera.shake },
 		fov = { style.camera.fov, 0.5 },
 		flash = { color = "core", time = 0.18 },
+		-- The deep presses on the whole world: Abyssal drains colour for a moment; Celestial stays warm.
+		grade = if style.blast.form == "spires"
+			then { color = "glow", contrast = 0.35, saturation = -0.7, time = 2.4 }
+			else { color = "glow", contrast = 0.1, saturation = 0.15, time = 0.8 },
 	})
 	add({
 		kind = "light",
@@ -348,9 +383,9 @@ local function impactDefinition(style: Style): Fx.Definition
 			color = "core",
 			offset = CFrame.new(0, 2, 0),
 			keys = {
-				{ t = 0, size = 1, transparency = 0 },
-				{ t = 0.08, size = radius * 0.5, transparency = 0.15, ease = "expoOut" },
-				{ t = 0.3, size = radius * 0.6, transparency = 1 },
+				{ t = 0, size = 1, transparency = 0, color = "core" },
+				{ t = 0.08, size = radius * 0.5, transparency = 0.15, color = "core", ease = "expoOut" },
+				{ t = 0.3, size = radius * 0.6, transparency = 1, color = "glow" },
 			},
 		})
 		add({
@@ -390,7 +425,7 @@ local function impactDefinition(style: Style): Fx.Definition
 			color = "glow",
 			offset = CFrame.new(0, 12, 0),
 			keys = {
-				{ t = 0, size = Vector3.new(22, 0.8, 0.8), transparency = 0.35 },
+				{ t = 0, size = Vector3.new(22, 0.5, 0.5), transparency = 0.55 },
 				{ t = 0.45, size = Vector3.new(26, 0.1, 0.1), transparency = 1, ease = "quadIn" },
 			},
 		})
@@ -405,7 +440,7 @@ local function impactDefinition(style: Style): Fx.Definition
 				kind = "mesh",
 				name = `Spire{i}`,
 				at = blast + (i % 3) * 0.04,
-				shape = "wedge",
+				shape = "shard",
 				material = "Glass",
 				color = if i % 3 == 0 then "accent" else "dark",
 				keys = {

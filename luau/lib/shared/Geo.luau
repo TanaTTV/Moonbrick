@@ -321,6 +321,17 @@ end
 function Geo.build(fn: (Builder) -> (), opts: PartOptions?): MeshPart
 	local builder = Geo.new()
 	fn(builder)
+	-- A faceted crystal shard 1 stud wide and tall, pointing up (+Y), base at the bottom.
+	function Geo.unitShard(): MeshPart
+		return Geo.cached("UnitShard", function(b)
+			b.flat = true
+			b:lathe(
+				{ Vector2.new(0.001, -0.5), Vector2.new(0.5, -0.38), Vector2.new(0.36, 0.18), Vector2.new(0.001, 0.5) },
+				5
+			)
+		end, { collision = false })
+	end
+
 	return Geo.toPart(builder, opts)
 end
 
