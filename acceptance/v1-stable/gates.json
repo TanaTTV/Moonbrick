@@ -100,14 +100,28 @@
     {
       "id": "datastore-provider-failures",
       "status": "pending",
-      "evidence": [],
-      "notes": "Real provider throttling/outage behavior, or an explicit evidence-based owner waiver; do not induce production load."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-lifecycle-faults.md",
+          "environment": "Roblox Studio 0.743.0.7431133; new local place; shipped PlayerData over memory store with injected delays/outages",
+          "result": "inconclusive",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Real provider throttling/outage behavior, or an explicit evidence-based owner waiver; do not induce production load. 2026-10-18: injected outages during final saves and shutdown retried and stayed bounded (see report); beta live suite observed real budgets with injected throttles. Real provider failure is still unobserved, so this needs an owner waiver."
     },
     {
       "id": "datastore-forced-disconnect",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Real lifecycle failure, shutdown during load/save and safe recovery in disposable context; distinguish injected faults."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-lifecycle-faults.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo; new local place; shipped PlayerData over memory store with injected delays/outages",
+          "result": "pass",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Real lifecycle failure, shutdown during load/save and safe recovery in disposable context; distinguish injected faults. 2026-10-18: real Kick during load and during save, real engine shutdown during load and during a persistent injected outage; all released or kept the last good save, bounded at 25 s. Provider faults were injected and are labelled as such."
     },
     {
       "id": "plugin-interactive-reload",
