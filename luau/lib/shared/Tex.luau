@@ -236,11 +236,13 @@ function Tex.get(name: string, opts: Options?): any
 	return result
 end
 
-local LAYOUTS: { [number]: Enum.ParticleFlipbookLayout } = {
-	[2] = Enum.ParticleFlipbookLayout.Grid2x2,
-	[4] = Enum.ParticleFlipbookLayout.Grid4x4,
-	[8] = Enum.ParticleFlipbookLayout.Grid8x8,
-}
+local function layoutFor(grid: number): Enum.ParticleFlipbookLayout?
+	return if grid == 2
+		then Enum.ParticleFlipbookLayout.Grid2x2
+		elseif grid == 4 then Enum.ParticleFlipbookLayout.Grid4x4
+		elseif grid == 8 then Enum.ParticleFlipbookLayout.Grid8x8
+		else nil
+end
 
 -- Puts texture `name` on a ParticleEmitter, Beam, Trail, ImageLabel/ImageButton or Decal.
 -- Falls back to a stock Roblox texture where runtime images are unavailable.
@@ -250,9 +252,10 @@ function Tex.apply(target: Instance, name: string, opts: Options?)
 	if target:IsA("ParticleEmitter") or target:IsA("Beam") or target:IsA("Trail") then
 		local id, grid = Tex.fileFor(name)
 		any.Texture = id
-		if target:IsA("ParticleEmitter") and grid and LAYOUTS[grid] then
+		local layout = if grid then layoutFor(grid) else nil
+		if target:IsA("ParticleEmitter") and layout then
 			-- Layout before mode, or the emitter loops frame 1 (see the studio skill).
-			any.FlipbookLayout = LAYOUTS[grid]
+			any.FlipbookLayout = layout
 			any.FlipbookMode = Enum.ParticleFlipbookMode.OneShot
 		end
 		return

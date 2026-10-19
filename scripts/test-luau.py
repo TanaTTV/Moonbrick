@@ -1,5 +1,6 @@
 """Run shipped Luau specs with a pinned Luau CLI and a small deterministic store harness."""
 import argparse
+import importlib.util
 from pathlib import Path
 import shutil
 import subprocess
@@ -31,8 +32,46 @@ def bundle():
     brawl_spec = (brawl / "tests/Rules.spec.luau").read_text(encoding="utf-8")
     brawl_spec = brawl_spec.replace('game:GetService("ServerScriptService").Server.Rules', '"BrawlRules"')
     brawl_spec = brawl_spec.replace('game:GetService("ReplicatedStorage").Shared.Elements', '"BrawlElements"')
-    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)(), (function()\n" + net_suite + "\nend)(), (function()\n" + brawl_spec + "\nend)()}\n"
+    code += creative_modules()
+    creative_spec = (ROOT / "luau/tests/Creative.spec.luau").read_text(encoding="utf-8")
+    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)(), (function()\n" + net_suite + "\nend)(), (function()\n" + brawl_spec + "\nend)(), (function()\n" + creative_spec + "\nend)(), (function()\n" + tex_parity_spec() + "\nend)()}\n"
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
+
+
+CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Fx")
+
+
+def creative_modules() -> str:
+    """Inline the creative modules; `require(script.Parent.X)` becomes the bundled module table."""
+    code = ""
+    for name in CREATIVE:
+        source = (ROOT / f"luau/lib/shared/{name}.luau").read_text(encoding="utf-8")
+        for other in CREATIVE + ("VFX", "Geo"):
+            source = source.replace(f"require(script.Parent.{other})", f"modules.{other}")
+        code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ReplicatedStorage.Kit.{name} = '{name}'\n"
+    return code
+
+
+def tex_parity_spec() -> str:
+    """Luau Tex.alpha must match scripts/fxtex.py, which renders the particle texture files."""
+    spec = importlib.util.spec_from_file_location("fxtex", ROOT / "scripts/fxtex.py")
+    fxtex = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fxtex)
+    rows = []
+    for name in fxtex.TEXTURES:
+        for u, v, frame in ((0.0, 0.0, 0.0), (0.31, -0.22, 0.4), (-0.6, 0.45, 0.9), (0.12, 0.7, 0.0)):
+            rows.append(f'{{ "{name}", {u!r}, {v!r}, {frame!r}, {fxtex.alpha(name, u, v, None, frame)!r} }}')
+    return (
+        "return function(t)\n"
+        "\tlocal Tex = t.require(game:GetService('ReplicatedStorage').Kit.Tex)\n"
+        "\tt.test('Tex.alpha matches the fxtex.py file renderer', function()\n"
+        f"\t\tfor _, row in {{ {', '.join(rows)} }} do\n"
+        "\t\t\tlocal got = Tex.alpha(row[1], row[2], row[3], nil, row[4])\n"
+        "\t\t\tt.ok(math.abs(got - row[5]) < 1e-6, row[1] .. ' differs: ' .. got .. ' vs ' .. row[5])\n"
+        "\t\tend\n"
+        "\tend)\n"
+        "end"
+    )
 
 
 def studio_bundle():

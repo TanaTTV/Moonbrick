@@ -84,6 +84,8 @@ export type Options = {
 
 - `VFX.Textures = { Sparkle, Fire, Smoke }`
   Particle textures that ship with Roblox (no asset upload needed).
+- `VFX.Style = { titleFont = Enum.Font.FredokaOne }`
+  Presentation defaults a game can restyle (V1 values by default).
 - `VFX.tween(inst: Instance, time: number, props: { [string]: any }, style: Enum.EasingStyle?, dir: Enum.EasingDirection?): Tween`
 - `VFX.numSeq(points: { { number } }): NumberSequence`
 - `VFX.shockwave(position: Vector3, opts: Options?)`
@@ -163,7 +165,9 @@ export type PanelProps = {
 }
 ```
 
-- `UI.Theme = { primary, secondary, danger, success, background, surface, text, textOutline, font, corner, stroke, minTouchSize }`
+- `UI.Theme = { primary, secondary, danger, success, background, surface, text, textOutline, font, corner, stroke, minTouchSize, buttonFill, buttonStroke, displayFont, panelStroke, panelTransparency, textStrokeWidth }`
+- `UI.useTheme(patch: { [string]: any })`
+  Applies a partial theme (e.g. from the game's art direction) in one call.
 - `UI.screen(name: string, displayOrder: number?): ScreenGui`
   Full-screen ScreenGui in the local player's PlayerGui (reused if it already exists).
 - `UI.button(p: ButtonProps): TextButton`

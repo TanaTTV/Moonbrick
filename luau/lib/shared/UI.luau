@@ -24,7 +24,23 @@ UI.Theme = {
 	corner = 14,
 	stroke = 3,
 	minTouchSize = 48, -- px; keeps buttons tappable on phones
+	-- Shape language (defaults reproduce the V1 look; set them from the game's art direction):
+	buttonFill = "gradient" :: "gradient" | "flat" | "outline",
+	buttonStroke = Color3.new(1, 1, 1),
+	displayFont = nil :: Enum.Font?, -- titles; defaults to `font`
+	panelStroke = nil :: Color3?, -- defaults to `secondary`
+	panelTransparency = 0.05,
+	textStrokeWidth = 3, -- button text outline; 0 for none
 }
+
+-- Applies a partial theme (e.g. from the game's art direction) in one call.
+function UI.useTheme(patch: { [string]: any })
+	local theme = UI.Theme :: any
+	for key, value in patch do
+		assert(theme[key] ~= nil or key == "displayFont" or key == "panelStroke", `UI.useTheme: unknown key '{key}'`)
+		theme[key] = value
+	end
+end
 
 export type Style = "primary" | "secondary" | "danger" | "success"
 
@@ -108,16 +124,27 @@ function UI.button(p: ButtonProps): TextButton
 	sizeConstraint.MinSize = Vector2.new(theme.minTouchSize, theme.minTouchSize)
 	sizeConstraint.Parent = b
 	corner(b)
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(color, color:Lerp(Color3.new(0, 0, 0), 0.35))
-	gradient.Rotation = 90
-	gradient.Parent = b
 	local border = Instance.new("UIStroke")
 	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	border.Color = Color3.new(1, 1, 1)
+	border.Color = theme.buttonStroke
 	border.Thickness = theme.stroke
 	border.Parent = b
-	textStroke(b, 3)
+	if theme.buttonFill == "flat" then
+		b.BackgroundColor3 = color
+	elseif theme.buttonFill == "outline" then
+		b.BackgroundColor3 = theme.surface
+		b.BackgroundTransparency = 0.35
+		b.TextColor3 = color
+		border.Color = color
+	else
+		local gradient = Instance.new("UIGradient")
+		gradient.Color = ColorSequence.new(color, color:Lerp(Color3.new(0, 0, 0), 0.35))
+		gradient.Rotation = 90
+		gradient.Parent = b
+	end
+	if theme.textStrokeWidth > 0 then
+		textStroke(b, theme.textStrokeWidth)
+	end
 
 	local scale = scaleOf(b)
 	local rest = 1
@@ -218,10 +245,10 @@ function UI.panel(p: PanelProps): Frame
 	f.Position = p.position or UDim2.fromScale(0.5, 0.5)
 	f.AnchorPoint = p.anchor or Vector2.new(0.5, 0.5)
 	f.BackgroundColor3 = theme.surface
-	f.BackgroundTransparency = 0.05
+	f.BackgroundTransparency = theme.panelTransparency
 	corner(f, theme.corner + 4)
 	local border = Instance.new("UIStroke")
-	border.Color = theme.secondary
+	border.Color = theme.panelStroke or theme.secondary
 	border.Thickness = theme.stroke
 	border.Parent = f
 	local pad = Instance.new("UIPadding")
@@ -235,6 +262,7 @@ function UI.panel(p: PanelProps): Frame
 	list.Parent = f
 	if p.title then
 		local t = UI.label({ parent = f, text = p.title, textSize = 36, color = theme.primary, name = "Title" })
+		t.Font = theme.displayFont or theme.font
 		t.LayoutOrder = -1
 	end
 	f.Parent = p.parent
