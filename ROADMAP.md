@@ -1,5 +1,9 @@
 # Roadmap
 
+## v1.1
+
+Close the nine stable gates waived for 1.0 ([WAIVERS.md](acceptance/v1-stable/WAIVERS.md)): Device Emulator touch, real gamepad, real-phone performance, 2-player streaming, live DataStore engine restart, natural lock expiry and two independent servers (in a new private test experience), provider-failure evidence, and an interactive `/reload-plugins` check.
+
 The 1.0 stable gates and their evidence, including what is still untested, are in [acceptance/v1-stable/](acceptance/v1-stable/) (proposed waivers: [WAIVERS.md](acceptance/v1-stable/WAIVERS.md)); the beta evidence is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md) and earlier history in [docs/V1-STATUS.md](docs/V1-STATUS.md). See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Next: Creator Store assets (planned, not started)

@@ -1,6 +1,6 @@
-# V1 stable — waiver proposal (needs owner approval)
+# V1 stable — waivers (approved, deferred to v1.1)
 
-**Status: PROPOSED, not approved.** Nothing in [gates.json](gates.json) is marked waived until the owner approves each row below. Approval is recorded per gate as `"status": "waived"`, `"approved_by"`, `"reason"` and an evidence record pointing back to this file.
+**Status: APPROVED by the repository owner (TanaTTV) on 2026-10-19: all nine pending gates are deferred to v1.1.** Each is recorded in [gates.json](gates.json) as `waived` with `approved_by`, `reason` and an evidence record pointing here. These are known limitations of 1.0.0, not passes.
 
 As of 2026-10-19: **4 passed** (Blender static/PBR, Blender rig/animation, terrain import, forced disconnect), **9 pending**. Each pending gate needs either the owner's hands (a device, a controller, a new private test experience, an interactive Claude session) or something that can't be produced safely at all (a real Roblox outage).
 
@@ -16,6 +16,6 @@ As of 2026-10-19: **4 passed** (Blender static/PBR, Blender rig/animation, terra
 | `datastore-provider-failures` | Injected throttling/outage retries in the shipped Luau suite, the live budget scenario and the Studio lifecycle harness; real request budgets observed | A *real* Roblox throttle or outage | Real failure modes may differ from injected ones | Waive: a real outage can't be produced safely, and deliberately throttling is not allowed. |
 | `plugin-interactive-reload` | Isolated install/upgrade test (CI), remote marketplace install verified | Fresh interactive Claude Code session running `/reload-plugins` and the commands | Low: the files and hooks are verified; only the interactive reload is unobserved | Waive for 1.0, or ~5 min in a fresh session. |
 
-## To approve
+## v1.1
 
-Reply with the gates you approve (or "approve all"). Each approved row becomes `waived` in `gates.json` with your name as `approved_by`, `python scripts/check-stable-acceptance.py --release` turns READY, and the release notes list every waived gate as a known limitation. Anything you'd rather test gets a short step-by-step instead.
+Each row above is a v1.1 task: run the missing check and replace the waiver with pass evidence (or a fix plus pass evidence). The DataStore rows need a new private disposable test experience under the existing [runbook](../datastore/README.md).
