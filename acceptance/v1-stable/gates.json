@@ -11,8 +11,15 @@
     {
       "id": "device-gamepad",
       "status": "pending",
-      "evidence": [],
-      "notes": "Controller or physical gamepad X collection and movement; PC E regression."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-15-studio-input-partial.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo, no emulator preset; fresh local Crystal Rush (d45f9f5)",
+          "result": "inconclusive",
+          "date": "2026-10-15"
+        }
+      ],
+      "notes": "Controller or physical gamepad X collection and movement; PC E regression. 2026-10-15: keyboard E regression passed (+1); synthetic ButtonX awarded +1 but LastInputType stayed Keyboard, so a real controller is still required."
     },
     {
       "id": "device-physical-performance",
@@ -23,26 +30,54 @@
     {
       "id": "streaming-streamout",
       "status": "pending",
-      "evidence": [],
-      "notes": "Extended map; actual stream-out/in, late crystal state, 2-player authority."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-streaming-solo.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo; new local Crystal Rush place + disposable walkway, StreamOutBehavior Opportunistic",
+          "result": "inconclusive",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Extended map; actual stream-out/in, late crystal state, 2-player authority. 2026-10-18 solo: real stream-out/in, HUD without crystals, late claimed and reset state, distant/duplicate/teleport denial all passed; 2-player Local Server part still required."
     },
     {
       "id": "blender-studio-static-pbr",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Import generated FBX, assign four SurfaceAppearance maps, inspect rendered output."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md",
+          "environment": "Blender 5.2.2 LTS; Roblox Studio 0.743.0.7431133 3D Importer default unit + Animation Editor; new local review place",
+          "result": "pass",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Import generated FBX, assign four SurfaceAppearance maps, inspect rendered output. 2026-10-16: PBR cube imported with all four maps auto-assigned and rendered correctly; Meters scale unit and static rock/crystal fixtures not exercised."
     },
     {
       "id": "blender-studio-rig-animation",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-blender-studio.md#resolution--rest-pose-source",
+          "environment": "Blender 5.2.2 LTS export (unchanged exporter); Roblox Studio 0.743.0.7431133 3D Importer (Stud) + Animation Editor Import From File, Rest Pose Source = Imported Rig; playtest playback",
+          "result": "pass",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Studio 3D Importer and Animation Editor bone, scale, keyframes and playback. 2026-10-16: with the default Rest Pose Source (Zeroed Rotations) the rig played lying flat (reproduced twice, see report); with Rest Pose Source = Imported Rig the clip matches Blender exactly and plays upright. The assets skill now requires that setting. Meters scale unit not exercised."
     },
     {
       "id": "terrain-import",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Terrain voxels and original-place Rojo connection diff; preserve original place."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-16-terrain.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Rojo 7.7.1; new disposable local terrain place (.rbxlx)",
+          "result": "pass",
+          "date": "2026-10-16"
+        }
+      ],
+      "notes": "Terrain voxels and original-place Rojo connection diff; preserve original place. 2026-10-16: connection diff additions-only (+ DataModel.Name), terrain voxel checksum identical, original file hash unchanged."
     },
     {
       "id": "datastore-engine-shutdown-restart",
@@ -65,14 +100,28 @@
     {
       "id": "datastore-provider-failures",
       "status": "pending",
-      "evidence": [],
-      "notes": "Real provider throttling/outage behavior, or an explicit evidence-based owner waiver; do not induce production load."
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-lifecycle-faults.md",
+          "environment": "Roblox Studio 0.743.0.7431133; new local place; shipped PlayerData over memory store with injected delays/outages",
+          "result": "inconclusive",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Real provider throttling/outage behavior, or an explicit evidence-based owner waiver; do not induce production load. 2026-10-18: injected outages during final saves and shutdown retried and stayed bounded (see report); beta live suite observed real budgets with injected throttles. Real provider failure is still unobserved, so this needs an owner waiver."
     },
     {
       "id": "datastore-forced-disconnect",
-      "status": "pending",
-      "evidence": [],
-      "notes": "Real lifecycle failure, shutdown during load/save and safe recovery in disposable context; distinguish injected faults."
+      "status": "passed",
+      "evidence": [
+        {
+          "reference": "acceptance/v1-stable/evidence/2026-10-18-lifecycle-faults.md",
+          "environment": "Roblox Studio 0.743.0.7431133; Play Solo; new local place; shipped PlayerData over memory store with injected delays/outages",
+          "result": "pass",
+          "date": "2026-10-18"
+        }
+      ],
+      "notes": "Real lifecycle failure, shutdown during load/save and safe recovery in disposable context; distinguish injected faults. 2026-10-18: real Kick during load and during save, real engine shutdown during load and during a persistent injected outage; all released or kept the last good save, bounded at 25 s. Provider faults were injected and are labelled as such."
     },
     {
       "id": "plugin-interactive-reload",
