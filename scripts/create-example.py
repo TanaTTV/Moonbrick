@@ -1,10 +1,11 @@
-"""Create a playable Crystal Rush project without installing tools, uploading assets or starting Studio."""
+"""Create a playable example project (Crystal Rush or Element Brawl) without installing tools, uploading assets or starting Studio."""
 import argparse
 import json
 from pathlib import Path
 import shutil
 
 from project import new_project
+import brawl_map
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,7 +58,28 @@ def create(target):
     print(f"Crystal Rush created at {target}. Run tools/check.sh, build/connect Rojo, then test in a dedicated place.")
 
 
+def create_brawl(target):
+    new_project(target, "Element Brawl")
+    example = ROOT / "examples/element-brawl"
+    for folder in ("src", "tests"):
+        shutil.copytree(example / folder, target / folder, dirs_exist_ok=True)
+    project_path = target / "default.project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    # Every fighter must stay visible to every client, so this one-screen arena does not stream.
+    project["tree"]["Workspace"]["$properties"] = {"StreamingEnabled": False}
+    project["tree"]["Lighting"] = brawl_map.lighting()
+    project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8", newline="\n")
+    for name, model in (("SkyShrine", brawl_map.stage()), ("Backdrop", brawl_map.backdrop())):
+        (target / f"src/world/{name}.model.json").write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8", newline="\n")
+    shutil.copyfile(example / "README.md", target / "EXAMPLE.md")
+    print(f"Element Brawl created at {target}. Run tools/check.sh, build/connect Rojo, then test in a dedicated place.")
+
+
+EXAMPLES = {"crystal-rush": create, "element-brawl": create_brawl}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("target", type=Path)
-    create(parser.parse_args().target)
+    parser.add_argument("--example", choices=sorted(EXAMPLES), default="crystal-rush")
+    args = parser.parse_args()
+    EXAMPLES[args.example](args.target)

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (towards 1.0.0)
+- **Element Brawl showcase** (`python scripts/create-example.py <dir> --example element-brawl`): a Smash-style platform fighter with damage-percent knockback, blast zones, stocks, four element specials (Flame Dash, Frost Lance, Thunder Blink, Gale Burst), double/recovery jumps, a side-on framing camera, bots, a damage HUD and saved Wins/KOs, built on Net, Cooldown, Round, PlayerData, VFX and UI. Its rules run in the headless Luau suite and the generated project is type-checked and built in CI. Playtested in Studio 0.743: every special and the strike apply their exact damage, launches reach player and bot, KOs, eliminations and results work.
+- **Faster, cheaper sessions:** every project ships `tools/KIT_API.md` (a generated ~15 KB signature card) and checked `tools/recipes/` (data, pickups, ability, shop); the skills point there instead of the Kit source. Same-batch benchmark: median cost equal to plain Claude Code ($0.217 vs $0.220), about 23% faster, with session-locked saves in 3/3 runs.
+- `tools/check.sh` keeps diagnostics in order and caps output at 40 lines.
+- Blender → Studio: the assets skill now requires Animation Editor *Rest Pose Source = Imported Rig* (the default lays rigs flat) and matching Scale Unit; static/PBR, rig/animation and terrain import passed in Studio.
+- Player disconnects and server shutdowns during loads and saves (with injected provider faults) verified in Studio; reusable fault harness under `acceptance/v1-stable/lifecycle/`.
+- New banner rendered from a scripted Blender scene (`.github/assets/blender/hero.py`) and a rewritten README.
+
 ## 1.0.0-beta.1 (2026-10-15, beta)
 Beta, not a stable 1.0. Evidence per requirement, including what was **not** tested, is in [docs/V1-BETA-LEDGER.md](docs/V1-BETA-LEDGER.md).
 - Live DataStore acceptance passed on a disposable private experience (7/7: round-trip, session-lock contention, stale-lock takeover, shutdown flush, invalid-data refusal + recovery, retry/backoff; no leftovers, 51/60 requests). Not yet run live: real engine shutdown/restart, natural 600 s lock expiry, two-server contention, real provider throttling.

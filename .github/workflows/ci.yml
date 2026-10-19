@@ -109,9 +109,11 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then exe="$exe.exe"; fi
           python examples/crystal-rush/tests/run-layout.py --luau "$exe"
           python scripts/create-example.py .artifacts/crystal-rush
-          cd .artifacts/crystal-rush
+          (cd .artifacts/crystal-rush && bash tools/check.sh && rojo build default.project.json -o crystal-rush.rbxlx)
+          python scripts/create-example.py .artifacts/element-brawl --example element-brawl
+          cd .artifacts/element-brawl
           bash tools/check.sh
-          rojo build default.project.json -o crystal-rush.rbxlx
+          rojo build default.project.json -o element-brawl.rbxlx
   install:
     # Fresh plugin install + 0.1.0 upgrade in isolated config/cache dirs (needs the v0.1.0 tag).
     strategy:

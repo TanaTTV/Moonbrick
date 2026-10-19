@@ -24,7 +24,14 @@ def bundle():
     rules = (ROOT / "examples/crystal-rush/src/server/Rules.luau").read_text(encoding="utf-8")
     rules_spec = (ROOT / "examples/crystal-rush/tests/Rules.spec.luau").read_text(encoding="utf-8")
     code += "modules.Rules = (function()\n" + rules + "\nend)()\nservices.ServerScriptService.Server = { Rules = 'Rules' }\n"
-    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)(), (function()\n" + net_suite + "\nend)()}\n"
+    # Element Brawl's rules/elements are pure; its spec's Studio paths map to these module keys.
+    brawl = ROOT / "examples/element-brawl"
+    code += "modules.BrawlRules = (function()\n" + (brawl / "src/server/Rules.luau").read_text(encoding="utf-8") + "\nend)()\n"
+    code += "modules.BrawlElements = (function()\n" + (brawl / "src/shared/Elements.luau").read_text(encoding="utf-8") + "\nend)()\n"
+    brawl_spec = (brawl / "tests/Rules.spec.luau").read_text(encoding="utf-8")
+    brawl_spec = brawl_spec.replace('game:GetService("ServerScriptService").Server.Rules', '"BrawlRules"')
+    brawl_spec = brawl_spec.replace('game:GetService("ReplicatedStorage").Shared.Elements', '"BrawlElements"')
+    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + rules_spec + "\nend)(), (function()\n" + net_suite + "\nend)(), (function()\n" + brawl_spec + "\nend)()}\n"
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
 
 
