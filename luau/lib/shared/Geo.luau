@@ -10,10 +10,15 @@
 --   end)
 --
 -- Shared vertices shade smoothly (Roblox computes normals); `b.flat = true` before building gives hard
--- facets. Runtime meshes don't save with the place or replicate: build them where they are seen (client
--- for effects; the server for world props that need collisions only replicates when Roblox supports it,
--- so verify in a playtest). Published games need Game Settings → Security → "Allow Mesh & Image APIs".
--- Approach adapted from RoClicks meshlab's lathe/tube/loft helpers (MIT); written for strict Luau here.
+-- facets. Runtime meshes don't save with the place and DON'T render when made on the server (verified in
+-- Studio 0.743: clients see a "missing mesh" checker). Build them on clients: for world props, put
+-- ordinary parts ("spots") with a `GeoShape` attribute in the world (they save, collide and replicate)
+-- and call `Geo.dress(workspace)` from a client script; each spot gets its mesh and turns invisible.
+-- Clients allow few live growable EditableMeshes (8 in Studio 0.743), so each build is baked into a
+-- fixed-size copy (hundreds allowed) and the builder freed. Still prefer few distinct shapes and many
+-- clones: clones share one mesh.
+-- Published games need Game Settings → Security → "Allow Mesh & Image APIs".
+-- Approach adapted from RoClicks meshlab's lathe/tube/loft helpers and its "shape spot" idea (MIT).
 local AssetService = game:GetService("AssetService")
 
 local Geo = {}
@@ -21,6 +26,8 @@ local Geo = {}
 export type Builder = {
 	mesh: EditableMesh,
 	flat: boolean,
+	-- Per-face colour from the triangle's centre (speckles, gradients, AO); overrides setColor.
+	colorAt: ((Vector3) -> Color3)?,
 	vertex: (self: Builder, p: Vector3) -> number,
 	tri: (self: Builder, a: number, b: number, c: number) -> (),
 	quad: (self: Builder, a: number, b: number, c: number, d: number) -> (),
@@ -39,6 +46,7 @@ export type Builder = {
 	extrude: (self: Builder, outline: { Vector2 }, height: number, cf: CFrame?) -> (),
 	sphere: (self: Builder, radius: number, rings: number?, segments: number?, cf: CFrame?) -> (),
 	displace: (self: Builder, fn: (Vector3) -> Vector3) -> (),
+	volume: (self: Builder) -> number,
 	count: (self: Builder) -> number,
 }
 
@@ -77,6 +85,10 @@ function BuilderMethods.tri(self: Internal, a: number, b: number, c: number)
 	local face = self.mesh:AddTriangle(a, b, c)
 	self._faces += 1
 	local color = self._color
+	if self.colorAt then
+		local centre = (self.mesh:GetPosition(a) + self.mesh:GetPosition(b) + self.mesh:GetPosition(c)) / 3
+		color = self.colorAt(centre)
+	end
 	if color then
 		local key = color:ToHex()
 		local id = self._colorIds[key]
@@ -94,7 +106,8 @@ function BuilderMethods.quad(self: Internal, a: number, b: number, c: number, d:
 end
 
 -- A surface through rows of points; `closed` wraps each row back to its first point.
--- Faces wind counter-clockwise seen from the side the rows turn toward (outward for lathes).
+-- Front faces (the visible side; Roblox culls the back) face where rows advance counter-clockwise
+-- around: outward for lathes, tubes and tori.
 function BuilderMethods.grid(self: Internal, rows: { { Vector3 } }, closed: boolean?)
 	local ids: { { number } } = {}
 	for i, row in rows do
@@ -108,7 +121,7 @@ function BuilderMethods.grid(self: Internal, rows: { { Vector3 } }, closed: bool
 		local last = if closed then count else count - 1
 		for j = 1, last do
 			local k = if j == count then 1 else j + 1
-			BuilderMethods.quad(self, ids[i][j], ids[i + 1][j], ids[i + 1][k], ids[i][k])
+			BuilderMethods.quad(self, ids[i][j], ids[i][k], ids[i + 1][k], ids[i + 1][j])
 		end
 	end
 end
@@ -174,7 +187,7 @@ function BuilderMethods.tube(self: Internal, path: { Vector3 }, radius: number |
 		local row = {}
 		for s = 0, n - 1 do
 			local a = s / n * math.pi * 2
-			table.insert(row, p + (side * math.cos(a) + up * math.sin(a)) * r)
+			table.insert(row, p + (side * math.cos(a) - up * math.sin(a)) * r) -- turns so faces point outward
 		end
 		table.insert(rows, row)
 	end
@@ -209,19 +222,30 @@ function BuilderMethods.box(self: Internal, cf: CFrame, size: Vector3)
 		local b = BuilderMethods.vertex(self, cf * (c + du - dv))
 		local cc = BuilderMethods.vertex(self, cf * (c + du + dv))
 		local d = BuilderMethods.vertex(self, cf * (c - du + dv))
-		BuilderMethods.quad(self, a, d, cc, b)
+		BuilderMethods.quad(self, a, b, cc, d)
 	end
 end
 
--- Extrudes a convex or simple outline (X, Z on the ground plane, counter-clockwise seen from above)
--- upward by `height`, with caps. Concave outlines cap correctly only if star-shaped around their centre.
+-- Extrudes a convex or simple outline (X, Z on the ground plane, either direction) upward by `height`,
+-- with caps. Concave outlines cap correctly only if star-shaped around their centre.
 function BuilderMethods.extrude(self: Internal, outline: { Vector2 }, height: number, cf: CFrame?)
 	local frame = cf or CFrame.identity
 	local n = #outline
 	assert(n >= 3, "Geo.extrude needs at least three outline points")
 	local centre = Vector2.zero
-	for _, p in outline do
+	local area = 0
+	for i, p in outline do
 		centre += p / n
+		local q = outline[i % n + 1]
+		area += p.X * q.Y - q.X * p.Y
+	end
+	-- Wind every face outward whichever way the outline runs.
+	local function face(a: number, b: number, c: number)
+		if area >= 0 then
+			BuilderMethods.tri(self, a, b, c)
+		else
+			BuilderMethods.tri(self, a, c, b)
+		end
 	end
 	local bottom, top = {}, {}
 	for _, p in outline do
@@ -235,14 +259,15 @@ function BuilderMethods.extrude(self: Internal, outline: { Vector2 }, height: nu
 		local b = BuilderMethods.vertex(self, self._positions[bottom[j]])
 		local c = BuilderMethods.vertex(self, self._positions[top[j]])
 		local d = BuilderMethods.vertex(self, self._positions[top[i]])
-		BuilderMethods.quad(self, a, b, c, d)
+		face(a, d, c)
+		face(a, c, b)
 	end
 	local cb = BuilderMethods.vertex(self, frame * Vector3.new(centre.X, 0, centre.Y))
 	local ct = BuilderMethods.vertex(self, frame * Vector3.new(centre.X, height, centre.Y))
 	for i = 1, n do
 		local j = i % n + 1
-		BuilderMethods.tri(self, ct, top[j], top[i])
-		BuilderMethods.tri(self, cb, bottom[i], bottom[j])
+		face(ct, top[j], top[i])
+		face(cb, bottom[i], bottom[j])
 	end
 end
 
@@ -264,14 +289,29 @@ function BuilderMethods.displace(self: Internal, fn: (Vector3) -> Vector3)
 	end
 end
 
+-- Signed volume of the mesh so far: positive when faces point outward (a closed shape built right),
+-- negative when it is inside-out. Used by tests.
+function BuilderMethods.volume(self: Internal): number
+	local total = 0
+	for _, face in self.mesh:GetFaces() do
+		local v = self.mesh:GetFaceVertices(face)
+		local a, b, c = self.mesh:GetPosition(v[1]), self.mesh:GetPosition(v[2]), self.mesh:GetPosition(v[3])
+		total += a:Dot(b:Cross(c)) / 6
+	end
+	return total
+end
+
 function BuilderMethods.count(self: Internal): number
 	return self._faces
 end
 
 function Geo.new(): Builder
+	local mesh = AssetService:CreateEditableMesh()
+	assert(mesh, "Geo: EditableMesh budget reached (share templates: fewer distinct shapes/params)")
 	local self = setmetatable({
-		mesh = AssetService:CreateEditableMesh(),
+		mesh = mesh,
 		flat = false,
+		colorAt = nil,
 		_positions = {},
 		_order = {},
 		_color = nil,
@@ -289,7 +329,11 @@ export type PartOptions = {
 	collision: boolean?,
 }
 
--- Turns a builder into a MeshPart, centred on its bounds (yields). Model space stays world space:
+-- The fixed-size meshes behind generated parts. They must stay alive: destroying one blanks every
+-- MeshPart made from it, clones included (verified).
+local baked: { [MeshPart]: EditableMesh } = {}
+
+-- Turns a builder into a MeshPart, centred on its bounds (yields). The builder can't be used afterwards. Model space stays world space:
 -- the part is placed where the mesh was built around the origin.
 function Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart
 	local o: PartOptions = opts or {}
@@ -305,7 +349,12 @@ function Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart
 	for _, id in ids do
 		mesh:SetPosition(id, mesh:GetPosition(id) - centre)
 	end
-	local part = AssetService:CreateMeshPartAsync(Content.fromObject(mesh))
+	-- Bake into a fixed-size copy and free the growable builder: clients allow only a handful of live
+	-- growable EditableMeshes (8 measured in Studio 0.743) but hundreds of fixed-size ones.
+	local fixed = AssetService:CreateEditableMeshAsync(Content.fromObject(mesh), { FixedSize = true })
+	mesh:Destroy()
+	local part = AssetService:CreateMeshPartAsync(Content.fromObject(fixed))
+	baked[part] = fixed
 	part.Name = o.name or "GeoMesh"
 	part.Anchored = o.anchored ~= false
 	part.Material = o.material or Enum.Material.SmoothPlastic
@@ -320,18 +369,13 @@ end
 -- Builds a MeshPart in one call (yields).
 function Geo.build(fn: (Builder) -> (), opts: PartOptions?): MeshPart
 	local builder = Geo.new()
-	fn(builder)
-	-- A faceted crystal shard 1 stud wide and tall, pointing up (+Y), base at the bottom.
-	function Geo.unitShard(): MeshPart
-		return Geo.cached("UnitShard", function(b)
-			b.flat = true
-			b:lathe(
-				{ Vector2.new(0.001, -0.5), Vector2.new(0.5, -0.38), Vector2.new(0.36, 0.18), Vector2.new(0.001, 0.5) },
-				5
-			)
-		end, { collision = false })
+	local ok, err: any = pcall(function()
+		fn(builder)
+	end)
+	if not ok then
+		builder.mesh:Destroy() -- don't leak budget on a failed build
+		error(err, 2)
 	end
-
 	return Geo.toPart(builder, opts)
 end
 
@@ -353,6 +397,81 @@ function Geo.unitTorus(thickness: number?): MeshPart
 	return Geo.cached("UnitTorus" .. t, function(b)
 		b:torus(0.5 - t, t, 64, 10)
 	end, { collision = false })
+end
+
+-- A faceted crystal shard 1 stud wide and tall, pointing up (+Y), base at the bottom.
+function Geo.unitShard(): MeshPart
+	return Geo.cached("UnitShard", function(b)
+		b.flat = true
+		b:lathe(
+			{ Vector2.new(0.001, -0.5), Vector2.new(0.5, -0.38), Vector2.new(0.36, 0.18), Vector2.new(0.001, 0.5) },
+			5
+		)
+	end, { collision = false })
+end
+
+-- Shapes that `Geo.dress` can build, by name. `build(builder, params)` builds around the origin at
+-- roughly unit size (1 stud across); the spot's size scales it. `params` are the spot's attributes.
+local shapes: { [string]: { build: (Builder, { [string]: any }) -> (), vertexColors: boolean } } = {}
+
+function Geo.register(name: string, build: (Builder, { [string]: any }) -> (), opts: { vertexColors: boolean? }?)
+	shapes[name] = { build = build, vertexColors = opts ~= nil and opts.vertexColors == true }
+end
+
+local function paramKey(name: string, params: { [string]: any }): string
+	local keys = {}
+	for key in params do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	local parts = { name }
+	for _, key in keys do
+		table.insert(parts, `{key}={tostring(params[key])}`)
+	end
+	return table.concat(parts, "|")
+end
+
+-- Client: gives every BasePart under `root` that has a `GeoShape` attribute its generated mesh, sized
+-- to the part. The part stays as an invisible collision/hit proxy. Returns how many were dressed.
+function Geo.dress(root: Instance): number
+	local count, failed = 0, 0
+	local candidates = root:GetDescendants()
+	table.insert(candidates, root)
+	for _, spot in candidates do
+		local shape = spot:GetAttribute("GeoShape")
+		if type(shape) == "string" and spot:IsA("BasePart") and not spot:GetAttribute("GeoDressed") then
+			local entry = shapes[shape]
+			if not entry then
+				warn(`Geo.dress: no shape registered as '{shape}' ({spot:GetFullName()})`)
+				continue
+			end
+			local params: { [string]: any } = spot:GetAttributes()
+			params.GeoShape, params.GeoDressed = nil, nil
+			local ok, template = pcall(Geo.cached, paramKey(shape, params), function(b)
+				entry.build(b, params)
+			end, { collision = false })
+			if not ok then
+				-- Out of mesh budget (or a bad build): leave the spot visible as its plain part.
+				failed += 1
+				if failed == 1 then
+					warn(`Geo.dress: '{shape}' not built, spots stay as plain parts: {template}`)
+				end
+				continue
+			end
+			local mesh = template:Clone()
+			mesh.Name = spot.Name .. "Mesh"
+			mesh.Size = spot.Size
+			mesh.CFrame = spot.CFrame
+			mesh.Material = spot.Material
+			mesh.Color = if entry.vertexColors then Color3.new(1, 1, 1) else spot.Color
+			mesh.CastShadow = spot.CastShadow
+			mesh.Parent = spot
+			spot.Transparency = 1
+			spot:SetAttribute("GeoDressed", true)
+			count += 1
+		end
+	end
+	return count
 end
 
 return Geo

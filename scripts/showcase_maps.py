@@ -120,3 +120,111 @@ def collapse_lighting():
         "TerraceBloom": {"$className": "BloomEffect", "$properties": {"Intensity": 0.2, "Size": 24, "Threshold": 1.4}},
         "TerraceGrade": {"$className": "ColorCorrectionEffect", "$properties": {"Saturation": 0.08, "Contrast": 0.06, "TintColor": [1, 0.97, 0.93]}},
     }
+
+
+# Mythic Hatch: the Moonlit Grove. Props are "spots" (plain parts with a GeoShape attribute) that the
+# client dresses with procedural meshes; the parts themselves stay as invisible collision proxies.
+# Every distinct shape+attributes is one live EditableMesh on the client, so variants are few (Seed 1-3).
+GRASS = [0.24, 0.42, 0.36]
+GRASS_DEEP = [0.17, 0.32, 0.3]
+WOOD = [0.36, 0.26, 0.22]
+LANTERN = [0.86, 0.5, 0.26]
+
+
+def _spot(name, shape, position, size, color, material="SmoothPlastic", rotation=(0, 0, 0), collide=False, **attributes):
+    spot = part(name, position, size, color, material, rotation=rotation,
+                CanCollide=collide, CanQuery=collide, CanTouch=False)
+    spot["attributes"] = {"GeoShape": shape, **attributes}
+    return spot
+
+
+def hatch_world():
+    rng = random.Random(7)
+    children = [
+        part("Meadow", [0, -1, 0], [400, 2, 400], GRASS_DEEP, "Grass"),
+        part("Clearing", [0, 0.1, 0], [0.4, 40, 40], GRASS, "Grass", rotation=(0, 0, 90), Shape="Cylinder"),
+        part("Dais", [0, 0.3, 0], [0.6, 9, 9], [0.55, 0.55, 0.6], "Slate", rotation=(0, 0, 90), Shape="Cylinder"),
+        _spot("Pedestal", "Pedestal", [0, 2.1, 0], [4.4, 3.0, 4.4], [1, 1, 1], "SmoothPlastic", collide=True),
+    ]
+    # Stepping stones lead in from the camera side.
+    for i in range(5):
+        z = 6.5 + i * 2.6
+        children.append(_spot(f"Path{i}", "Stone", [rng.uniform(-0.6, 0.6), 0.25, z], [2.2, 0.5, 1.8], [1, 1, 1], "Slate",
+                              rotation=(rng.uniform(0, 360), 0, 0), Seed=i % 3 + 1))
+    # Lantern posts frame the pedestal.
+    for i, (x, z) in enumerate(((-6.5, -2.5), (6.5, -2.5), (-9, 7), (9, 7))):
+        children.append(part(f"Post{i}", [x, 2.5, z], [0.4, 5, 0.4], WOOD, "Wood"))
+        children.append(part(f"Arm{i}", [x + (0.6 if x < 0 else -0.6), 4.9, z], [1.6, 0.25, 0.25], WOOD, "Wood"))
+        lantern = _spot(f"Lantern{i}", "Lantern", [x + (1.2 if x < 0 else -1.2), 4.1, z], [1.1, 1.4, 1.1], LANTERN, "Neon")
+        lantern["children"] = [light([1.0, 0.72, 0.42], 1.1, 14)]
+        children.append(lantern)
+    # Toadstool clusters in two cool hues and one warm accent; the big ones glow faintly.
+    clusters = (((-8, -8), 0.52), ((8.5, -7), 0.78), ((-12, 2), 0.78), ((12, 1), 0.52), ((-4, -12), 0.08), ((5, -13), 0.52))
+    for c, ((cx, cz), hue) in enumerate(clusters):
+        for k in range(rng.randint(3, 5)):
+            h = rng.uniform(0.9, 2.6) if k else rng.uniform(2.6, 3.6)
+            x, z = cx + rng.uniform(-1.6, 1.6), cz + rng.uniform(-1.6, 1.6)
+            shroom = _spot(f"Shroom{c}_{k}", "Mushroom", [x, h / 2, z], [h * 0.9, h, h * 0.9], [1, 1, 1],
+                           rotation=(rng.uniform(0, 360), 0, rng.uniform(-8, 8)), Hue=hue)
+            if k == 0:
+                glow = [0.5, 0.95, 0.9] if hue == 0.52 else ([0.85, 0.6, 1.0] if hue == 0.78 else [1.0, 0.7, 0.45])
+                shroom["children"] = [light(glow, 0.9, 10)]
+            children.append(shroom)
+    # Ferns and boulders soften the edge of the clearing.
+    for i in range(22):
+        a = rng.uniform(0, 2 * math.pi)
+        r = rng.uniform(9, 20)
+        x, z = math.cos(a) * r, math.sin(a) * r
+        if z > 4 and abs(x) < 7:
+            continue  # keep the camera's sightline clear
+        s = rng.uniform(1.6, 3.2)
+        children.append(_spot(f"Fern{i}", "Fern", [x, s / 2, z], [s * 1.4, s, s * 1.4], [0.3, 0.55, 0.42], "Grass",
+                              rotation=(rng.uniform(0, 360), 0, 0)))
+    for i in range(9):
+        a = rng.uniform(0, 2 * math.pi)
+        r = rng.uniform(11, 22)
+        s = rng.uniform(1.8, 4.2)
+        children.append(_spot(f"Boulder{i}", "Stone", [math.cos(a) * r, s * 0.3, math.sin(a) * r], [s * 1.3, s, s * 1.1],
+                              [1, 1, 1], "Slate", rotation=(rng.uniform(0, 360), 0, 0), collide=True, Seed=i % 3 + 1))
+    # The near ring of trees, open toward the camera.
+    for i in range(11):
+        a = -math.pi / 2 + (i / 10 - 0.5) * 1.75 * math.pi
+        r = rng.uniform(19, 26)
+        h = rng.uniform(16, 24)
+        children.append(_spot(f"Tree{i}", "Tree", [math.cos(a) * r, h / 2 - 0.2, math.sin(a) * r], [h * 0.8, h, h * 0.8],
+                              [1, 1, 1], rotation=(rng.uniform(0, 360), 0, 0), collide=True, Seed=i % 3 + 1))
+    world = {"className": "Model", "children": children}
+
+    backdrop = []
+    for i in range(30):
+        a = rng.uniform(0, 2 * math.pi)
+        r = rng.uniform(40, 90)
+        h = rng.uniform(22, 36)
+        backdrop.append(_spot(f"FarTree{i}", "Tree", [math.cos(a) * r, h / 2 - 0.5, math.sin(a) * r], [h * 0.8, h, h * 0.8],
+                              [1, 1, 1], rotation=(rng.uniform(0, 360), 0, 0), Seed=i % 3 + 1))
+    for i in range(6):
+        a = i / 6 * 2 * math.pi + 0.3
+        backdrop.append(decor(f"Hill{i}", [math.cos(a) * 150, -6, math.sin(a) * 150], [120, 30, 90], GRASS_DEEP, "Grass",
+                              rotation=(math.degrees(a), 0, 0)))
+    return world, {"className": "Model", "children": backdrop}
+
+
+def hatch_lighting():
+    return {
+        "$className": "Lighting",
+        "$ignoreUnknownInstances": True,
+        "$properties": {
+            "ClockTime": 19.1,
+            "GeographicLatitude": 20,
+            "Brightness": 1.4,
+            "Ambient": [0.3, 0.32, 0.42],
+            "OutdoorAmbient": [0.36, 0.42, 0.56],
+            "EnvironmentDiffuseScale": 0.6,
+            "EnvironmentSpecularScale": 0.5,
+        },
+        "GroveAtmosphere": {"$className": "Atmosphere", "$properties": {
+            "Density": 0.38, "Offset": 0.1, "Color": [0.56, 0.7, 0.8], "Decay": [0.36, 0.3, 0.52], "Glare": 0.2, "Haze": 2.2,
+        }},
+        "GroveBloom": {"$className": "BloomEffect", "$properties": {"Intensity": 0.4, "Size": 28, "Threshold": 1.3}},
+        "GroveGrade": {"$className": "ColorCorrectionEffect", "$properties": {"Saturation": 0.12, "Contrast": 0.08, "TintColor": [0.94, 0.97, 1.0]}},
+    }

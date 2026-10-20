@@ -165,7 +165,7 @@ export type PanelProps = {
 }
 ```
 
-- `UI.Theme = { primary, secondary, danger, success, background, surface, text, textOutline, font, corner, stroke, minTouchSize, buttonFill, buttonStroke, displayFont, panelStroke, panelTransparency, textStrokeWidth }`
+- `UI.Theme = { primary, secondary, danger, success, background, surface, text, textOutline, font, corner, stroke, minTouchSize, buttonFill, buttonStroke, displayFont, panelStroke, panelTransparency, textStrokeWidth, labelStroke }`
 - `UI.useTheme(patch: { [string]: any })`
   Applies a partial theme (e.g. from the game's art direction) in one call.
 - `UI.screen(name: string, displayOrder: number?): ScreenGui`

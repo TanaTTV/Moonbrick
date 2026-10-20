@@ -99,7 +99,11 @@ def create_collapse(target):
     create_showcase(target, "Celestial Collapse", "celestial-collapse", showcase_maps.collapse_world, showcase_maps.collapse_lighting)
 
 
-EXAMPLES = {"crystal-rush": create, "element-brawl": create_brawl, "celestial-collapse": create_collapse}
+def create_hatch(target):
+    create_showcase(target, "Mythic Hatch", "mythic-hatch", showcase_maps.hatch_world, showcase_maps.hatch_lighting)
+
+
+EXAMPLES = {"crystal-rush": create, "element-brawl": create_brawl, "celestial-collapse": create_collapse, "mythic-hatch": create_hatch}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

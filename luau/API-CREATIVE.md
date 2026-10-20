@@ -74,7 +74,8 @@ export type Layer = {
 	-- mesh
 	material: string?,
 	keys: { any }?, -- MeshKey tables: { t, size?, transparency?, color?, offset?, ease? }
-	spin: number?,
+	spin: number?, -- degrees per second about spinAxis
+	spinAxis: Vector3?, -- default X (tumble); Vector3.yAxis turns a flat ring in place
 	decal: string?, -- Tex name drawn on the mesh's top face (fades with the mesh), e.g. "crack"
 	-- beam
 	from: Vector3?,
@@ -355,15 +356,22 @@ export type Options = {
 > end)
 >
 > Shared vertices shade smoothly (Roblox computes normals); `b.flat = true` before building gives hard
-> facets. Runtime meshes don't save with the place or replicate: build them where they are seen (client
-> for effects; the server for world props that need collisions only replicates when Roblox supports it,
-> so verify in a playtest). Published games need Game Settings → Security → "Allow Mesh & Image APIs".
-> Approach adapted from RoClicks meshlab's lathe/tube/loft helpers (MIT); written for strict Luau here.
+> facets. Runtime meshes don't save with the place and DON'T render when made on the server (verified in
+> Studio 0.743: clients see a "missing mesh" checker). Build them on clients: for world props, put
+> ordinary parts ("spots") with a `GeoShape` attribute in the world (they save, collide and replicate)
+> and call `Geo.dress(workspace)` from a client script; each spot gets its mesh and turns invisible.
+> Clients allow few live growable EditableMeshes (8 in Studio 0.743), so each build is baked into a
+> fixed-size copy (hundreds allowed) and the builder freed. Still prefer few distinct shapes and many
+> clones: clones share one mesh.
+> Published games need Game Settings → Security → "Allow Mesh & Image APIs".
+> Approach adapted from RoClicks meshlab's lathe/tube/loft helpers and its "shape spot" idea (MIT).
 
 ```lua
 export type Builder = {
 	mesh: EditableMesh,
 	flat: boolean,
+	-- Per-face colour from the triangle's centre (speckles, gradients, AO); overrides setColor.
+	colorAt: ((Vector3) -> Color3)?,
 	vertex: (self: Builder, p: Vector3) -> number,
 	tri: (self: Builder, a: number, b: number, c: number) -> (),
 	quad: (self: Builder, a: number, b: number, c: number, d: number) -> (),
@@ -382,6 +390,7 @@ export type Builder = {
 	extrude: (self: Builder, outline: { Vector2 }, height: number, cf: CFrame?) -> (),
 	sphere: (self: Builder, radius: number, rings: number?, segments: number?, cf: CFrame?) -> (),
 	displace: (self: Builder, fn: (Vector3) -> Vector3) -> (),
+	volume: (self: Builder) -> number,
 	count: (self: Builder) -> number,
 }
 export type PartOptions = {
@@ -395,7 +404,7 @@ export type PartOptions = {
 
 - `Geo.new(): Builder`
 - `Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart`
-  Turns a builder into a MeshPart, centred on its bounds (yields). Model space stays world space:
+  Turns a builder into a MeshPart, centred on its bounds (yields). The builder can't be used afterwards. Model space stays world space:
   the part is placed where the mesh was built around the origin.
 - `Geo.build(fn: (Builder) -> (), opts: PartOptions?): MeshPart`
   Builds a MeshPart in one call (yields).
@@ -403,6 +412,12 @@ export type PartOptions = {
   A template MeshPart built once per key; Clone() it for each use (clones share the mesh data).
 - `Geo.unitTorus(thickness: number?): MeshPart`
   Unit shapes used by Fx mesh layers (size 1 along each axis after Fx scales them).
+- `Geo.unitShard(): MeshPart`
+  A faceted crystal shard 1 stud wide and tall, pointing up (+Y), base at the bottom.
+- `Geo.register(name: string, build: (Builder, { [string]: any }) -> (), opts: { vertexColors: boolean? }?)`
+- `Geo.dress(root: Instance): number`
+  Client: gives every BasePart under `root` that has a `GeoShape` attribute its generated mesh, sized
+  to the part. The part stays as an invisible collision/hit proxy. Returns how many were dressed.
 
 ## Scheduler
 `local Scheduler = require(ReplicatedStorage.Kit.Scheduler)` — both

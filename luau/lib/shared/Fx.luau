@@ -74,7 +74,8 @@ export type Layer = {
 	-- mesh
 	material: string?,
 	keys: { any }?, -- MeshKey tables: { t, size?, transparency?, color?, offset?, ease? }
-	spin: number?,
+	spin: number?, -- degrees per second about spinAxis
+	spinAxis: Vector3?, -- default X (tumble); Vector3.yAxis turns a flat ring in place
 	decal: string?, -- Tex name drawn on the mesh's top face (fades with the mesh), e.g. "crack"
 	-- beam
 	from: Vector3?,
@@ -680,6 +681,7 @@ local function buildMesh(ctx: Ctx, layer: Layer, index: number)
 	local sizes, alphas, colors, offsets = track("size"), track("transparency"), track("color"), track("offset")
 	local length = math.max(resolved[#resolved].t, 1e-3)
 	local spin = math.rad(layer.spin or 0)
+	local spinAxis = layer.spinAxis or Vector3.xAxis
 	local start = layer.at or 0
 	local decal: Decal? = nil
 	if layer.decal then
@@ -701,7 +703,7 @@ local function buildMesh(ctx: Ctx, layer: Layer, index: number)
 			part.Transparency = alpha
 		end
 		part.Color = Motion.sample(colors, t)
-		part.CFrame = ctx.anchor.CFrame * base * Motion.sample(offsets, t) * CFrame.Angles(spin * t, 0, 0)
+		part.CFrame = ctx.anchor.CFrame * base * Motion.sample(offsets, t) * CFrame.fromAxisAngle(spinAxis, spin * t)
 	end
 	over(ctx.handle, start, length, function(alpha)
 		apply(alpha * length)

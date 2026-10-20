@@ -31,6 +31,7 @@ UI.Theme = {
 	panelStroke = nil :: Color3?, -- defaults to `secondary`
 	panelTransparency = 0.05,
 	textStrokeWidth = 3, -- button text outline; 0 for none
+	labelStroke = 2, -- label text outline; 0 for none (dark text on light panels)
 }
 
 -- Applies a partial theme (e.g. from the game's art direction) in one call.
@@ -221,7 +222,9 @@ function UI.label(p: LabelProps): TextLabel
 	l.Size = p.size or UDim2.new(1, 0, 0, (p.textSize or 28) + 8)
 	l.Position = p.position or UDim2.new()
 	l.AnchorPoint = p.anchor or Vector2.zero
-	textStroke(l)
+	if UI.Theme.labelStroke > 0 then
+		textStroke(l, UI.Theme.labelStroke)
+	end
 	l.Parent = p.parent
 	return l
 end
