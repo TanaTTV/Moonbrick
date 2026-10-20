@@ -20,6 +20,7 @@ Roblox game built with Rojo. Code and generated world objects live on disk and s
 - After code changes: `bash tools/check.sh` (strict types + lint; `OK` or one line per problem; `--fix` formats). Fix everything before playtesting.
 - Logic with rules (economy, damage, data) gets a spec in `tests/`; run with `K.test()` in the Server datamodel of a playtest.
 - `PlayerData.update` callbacks must not yield; keep saves/remotes outside them. Studio data is memory-only by default. Real-store tests use an explicitly separate test experience/store, never production keys.
+- Visual work (effects, animation, procedural props, themed UI): read `tools/KIT_CREATIVE.md`. The game's look lives in `assets/art.json` → `style`; regenerate `src/shared/ArtStyle.luau` with `python <kit>/scripts/assets.py theme assets/art.json --output src/shared/ArtStyle.luau`.
 - For professional assets, use `moonbrick:assets` and an `assets/art.json` style/budget contract. Blender is optional. A local export does not approve uploads or prove visual/rig correctness.
 - Every feature registers Studio-only debug hooks (`ServerScriptService.Kit.DebugHooks`) so playtests can drive it with `K.hook(feature, action)`. UI must follow server state, not only its own clicks.
 - No silent early returns in feature code: `warn("<Feature>: why")` or return a reason string.
