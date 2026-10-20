@@ -113,7 +113,13 @@ function BountyCard.show(i: number)
 	name.Font = Enum.Font.Sarpanch
 	banner.Parent = panel
 
-	local reward = UI.label({ parent = panel, text = Frontier.money(bounty.reward), textSize = 34, color = AMBER, size = UDim2.new(1, 0, 0, 40) })
+	local reward = UI.label({
+		parent = panel,
+		text = Frontier.money(bounty.reward),
+		textSize = 34,
+		color = AMBER,
+		size = UDim2.new(1, 0, 0, 40),
+	})
 	reward.Font = Enum.Font.Sarpanch
 	reward.LayoutOrder = 2
 	local crime = UI.label({ parent = panel, text = bounty.crime, textSize = 18, size = UDim2.new(1, -10, 0, 46) })
@@ -142,7 +148,14 @@ function BountyCard.show(i: number)
 			BountyCard.show(page)
 		end,
 	})
-	local close = UI.button({ parent = row, text = "CLOSE", style = "secondary", size = UDim2.fromOffset(130, 50), textSize = 22, onClick = BountyCard.close })
+	local close = UI.button({
+		parent = row,
+		text = "CLOSE",
+		style = "secondary",
+		size = UDim2.fromOffset(130, 50),
+		textSize = 22,
+		onClick = BountyCard.close,
+	})
 	nextButton.LayoutOrder, close.LayoutOrder = 1, 2
 	scanlines(holder)
 
@@ -165,7 +178,6 @@ function BountyCard.show(i: number)
 		return false
 	end)
 end
-
 
 -- Opens the current bounty, or closes the card if it is open.
 function BountyCard.toggle()

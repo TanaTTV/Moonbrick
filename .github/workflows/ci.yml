@@ -111,9 +111,12 @@ jobs:
           python scripts/create-example.py .artifacts/crystal-rush
           (cd .artifacts/crystal-rush && bash tools/check.sh && rojo build default.project.json -o crystal-rush.rbxlx)
           python scripts/create-example.py .artifacts/element-brawl --example element-brawl
-          cd .artifacts/element-brawl
-          bash tools/check.sh
-          rojo build default.project.json -o element-brawl.rbxlx
+          (cd .artifacts/element-brawl && bash tools/check.sh && rojo build default.project.json -o element-brawl.rbxlx)
+          # V1.1 showcases: strict check + build (their visuals are verified in Studio, not CI).
+          for name in celestial-collapse mythic-hatch neon-frontier; do
+            python scripts/create-example.py ".artifacts/$name" --example "$name"
+            (cd ".artifacts/$name" && bash tools/check.sh && rojo build default.project.json -o "$name.rbxlx")
+          done
   install:
     # Fresh plugin install + 0.1.0 upgrade in isolated config/cache dirs (needs the v0.1.0 tag).
     strategy:

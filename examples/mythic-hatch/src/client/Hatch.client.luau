@@ -73,7 +73,9 @@ local idleT = 0
 Scheduler.every(function(dt)
 	idleT += dt
 	local top = pedestal.CFrame * CFrame.new(0, pedestal.Size.Y / 2, 0)
-	idleEgg.CFrame = top * CFrame.new(0, idleEgg.Size.Y / 2 + 0.15 + math.sin(idleT * 1.6) * 0.12, 0) * CFrame.Angles(0, idleT * 0.4, 0)
+	idleEgg.CFrame = top
+		* CFrame.new(0, idleEgg.Size.Y / 2 + 0.15 + math.sin(idleT * 1.6) * 0.12, 0)
+		* CFrame.Angles(0, idleT * 0.4, 0)
 	idleGlow.Brightness = 0.45 + math.sin(idleT * 1.6) * 0.25
 	return false
 end)
@@ -169,7 +171,13 @@ local function showCard(rarity: string, glow: number)
 	})
 	shimmer.Parent = ribbon
 	local stars = string.rep("★", STARS[rarity])
-	local label = UI.label({ parent = ribbon, text = `{stars}  {string.upper(look.title)}  {stars}`, textSize = 22, color = Color3.new(1, 1, 1), size = UDim2.fromScale(1, 1) })
+	local label = UI.label({
+		parent = ribbon,
+		text = `{stars}  {string.upper(look.title)}  {stars}`,
+		textSize = 22,
+		color = Color3.new(1, 1, 1),
+		size = UDim2.fromScale(1, 1),
+	})
 	label.Font = Enum.Font.Kalam
 	label.TextStrokeTransparency = 0.6
 	label.TextStrokeColor3 = INK
@@ -183,7 +191,8 @@ local function showCard(rarity: string, glow: number)
 		return false
 	end)
 
-	local stats = UI.label({ parent = panel, text = `Glow  {glow}`, textSize = 26, color = INK, size = UDim2.new(1, 0, 0, 34) })
+	local stats =
+		UI.label({ parent = panel, text = `Glow  {glow}`, textSize = 26, color = INK, size = UDim2.new(1, 0, 0, 34) })
 	stats.LayoutOrder = 2
 	local flavour = UI.label({
 		parent = panel,

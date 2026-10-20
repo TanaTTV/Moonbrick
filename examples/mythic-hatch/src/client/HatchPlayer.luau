@@ -49,11 +49,13 @@ local function shatter(look: any, at: Vector3, parent: Instance)
 		shard.Material = Enum.Material.SmoothPlastic
 		shard.Anchored = false
 		shard.CanCollide = true
-		shard.CFrame = CFrame.new(at + Vector3.new(rng:NextNumber(-0.6, 0.6), rng:NextNumber(0.4, 2.2), rng:NextNumber(-0.6, 0.6)))
-			* CFrame.Angles(rng:NextNumber(0, 6.3), rng:NextNumber(0, 6.3), 0)
+		shard.CFrame = CFrame.new(
+			at + Vector3.new(rng:NextNumber(-0.6, 0.6), rng:NextNumber(0.4, 2.2), rng:NextNumber(-0.6, 0.6))
+		) * CFrame.Angles(rng:NextNumber(0, 6.3), rng:NextNumber(0, 6.3), 0)
 		local angle = rng:NextNumber(0, math.pi * 2)
 		shard.AssemblyLinearVelocity = Vector3.new(math.cos(angle) * 14, rng:NextNumber(10, 20), math.sin(angle) * 14)
-		shard.AssemblyAngularVelocity = Vector3.new(rng:NextNumber(-15, 15), rng:NextNumber(-15, 15), rng:NextNumber(-15, 15))
+		shard.AssemblyAngularVelocity =
+			Vector3.new(rng:NextNumber(-15, 15), rng:NextNumber(-15, 15), rng:NextNumber(-15, 15))
 		shard.Parent = parent
 		Motion.to(shard, { Transparency = 1 }, {
 			time = 0.6,

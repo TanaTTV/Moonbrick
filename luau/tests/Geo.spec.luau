@@ -11,7 +11,10 @@ return function(t: any)
 	t.test("every closed primitive faces outward (positive signed volume)", function()
 		local shapes: { [string]: (any) -> () } = {
 			lathe = function(b)
-				b:lathe({ Vector2.new(0.001, 0), Vector2.new(1, 0.2), Vector2.new(0.5, 1), Vector2.new(0.001, 1.2) }, 16)
+				b:lathe(
+					{ Vector2.new(0.001, 0), Vector2.new(1, 0.2), Vector2.new(0.5, 1), Vector2.new(0.001, 1.2) },
+					16
+				)
 			end,
 			sphere = function(b)
 				b:sphere(1, 8, 12)

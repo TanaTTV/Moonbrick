@@ -98,7 +98,8 @@ Geo.register("Tree", function(b, params)
 	for i = 1, 7 do
 		local a = i / 7 * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
 		local r = if i == 7 then 0 else rng:NextNumber(0.14, 0.26)
-		local centre = Vector3.new(math.cos(a) * r, 0.18 + rng:NextNumber(0, 0.16) + (if i == 7 then 0.14 else 0), math.sin(a) * r)
+		local centre =
+			Vector3.new(math.cos(a) * r, 0.18 + rng:NextNumber(0, 0.16) + (if i == 7 then 0.14 else 0), math.sin(a) * r)
 		b:sphere(rng:NextNumber(0.16, 0.24), 6, 10, CFrame.new(centre))
 	end
 end, { vertexColors = true })

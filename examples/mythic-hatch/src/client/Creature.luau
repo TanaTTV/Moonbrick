@@ -41,7 +41,13 @@ export type Mothling = {
 	destroy: () -> (),
 }
 
-local function part(template: MeshPart, name: string, material: Enum.Material, color: Color3, parent: Instance): MeshPart
+local function part(
+	template: MeshPart,
+	name: string,
+	material: Enum.Material,
+	color: Color3,
+	parent: Instance
+): MeshPart
 	local p = template:Clone()
 	p.Name = name
 	p.Material = material
@@ -189,7 +195,9 @@ function Creature.mothling(look: any, root: CFrame, parent: Instance): Mothling
 		local squash = 1 + math.sin(t * 4.8) * 0.04
 		local origin = state.root * CFrame.new(0, (1.8 + bob) * s, 0)
 		body.CFrame = origin * CFrame.new(0, 0, 0)
-		head.CFrame = origin * CFrame.new(0, 1.05 * s * squash, -0.15 * s) * CFrame.Angles(math.sin(t * 1.3) * 0.08, 0, 0)
+		head.CFrame = origin
+			* CFrame.new(0, 1.05 * s * squash, -0.15 * s)
+			* CFrame.Angles(math.sin(t * 1.3) * 0.08, 0, 0)
 		ruff.CFrame = origin * CFrame.new(0, 0.62 * s, -0.08 * s) * CFrame.Angles(math.rad(12), 0, 0)
 		for i, eye in eyes do
 			local x = if i == 1 then -0.24 else 0.24

@@ -33,7 +33,13 @@ Hatch.looks = {
 	Common = {
 		name = "Common",
 		weight = 70,
-		palette = { core = rgb(240, 255, 236), glow = rgb(170, 220, 180), accent = rgb(120, 190, 150), spark = rgb(220, 250, 220), dark = rgb(40, 60, 50) },
+		palette = {
+			core = rgb(240, 255, 236),
+			glow = rgb(170, 220, 180),
+			accent = rgb(120, 190, 150),
+			spark = rgb(220, 250, 220),
+			dark = rgb(40, 60, 50),
+		},
 		shell = rgb(212, 220, 198),
 		speckle = rgb(92, 148, 102),
 		wing = rgb(186, 226, 196),
@@ -46,7 +52,13 @@ Hatch.looks = {
 	Rare = {
 		name = "Rare",
 		weight = 25,
-		palette = { core = rgb(255, 250, 230), glow = rgb(255, 196, 96), accent = rgb(255, 150, 70), spark = rgb(255, 230, 160), dark = rgb(70, 40, 20) },
+		palette = {
+			core = rgb(255, 250, 230),
+			glow = rgb(255, 196, 96),
+			accent = rgb(255, 150, 70),
+			spark = rgb(255, 230, 160),
+			dark = rgb(70, 40, 20),
+		},
 		shell = rgb(236, 210, 164),
 		speckle = rgb(196, 116, 40),
 		wing = rgb(255, 212, 130),
@@ -59,7 +71,13 @@ Hatch.looks = {
 	Mythic = {
 		name = "Mythic",
 		weight = 5,
-		palette = { core = rgb(255, 246, 255), glow = rgb(250, 120, 200), accent = rgb(110, 220, 255), spark = rgb(255, 220, 250), dark = rgb(40, 20, 60) },
+		palette = {
+			core = rgb(255, 246, 255),
+			glow = rgb(250, 120, 200),
+			accent = rgb(110, 220, 255),
+			spark = rgb(255, 220, 250),
+			dark = rgb(40, 20, 60),
+		},
 		shell = rgb(222, 204, 242),
 		speckle = rgb(116, 70, 196),
 		wing = rgb(140, 220, 255),
