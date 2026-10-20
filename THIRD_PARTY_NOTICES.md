@@ -6,11 +6,15 @@ work; the original notices are reproduced below as their licences require.
 | Moonbrick file | Adapted from | Revision | What was adapted |
 |---|---|---|---|
 | `luau/lib/shared/Fx.luau` (`Fx.emit`, editor-attribute playback) | RoClicks `roblox-vfx/templates/Emit.luau`, itself adapted from Roqer's `roblox-animation-vfx` `emit.lua` | zriptic/roclicks-skills `a8b66c1bb9ca` | The attribute convention (EmitDelay/EmitCount/EmitDuration, Start/End mesh tweens, EffectDuration) and time-scale hitstop. Rewritten for strict Luau, the shared scheduler, pooling and quality levels. |
-| `luau/lib/shared/Geo.luau` | RoClicks `meshlab/Shapes.luau` | zriptic/roclicks-skills `a8b66c1bb9ca` | The lathe/tube/grid surface approach. Written fresh; no code copied. |
+| `luau/lib/shared/Geo.luau` | RoClicks `meshlab/Shapes.luau` | zriptic/roclicks-skills `a8b66c1bb9ca` | The lathe/tube/grid surface approach and the "shape spot" idea behind `Geo.dress`. Written fresh; no code copied. |
 | `scripts/fxtex.py`, `scripts/sfx.py` (`preview`) | RoClicks `roblox-vfx/scripts/vfxtex.py` | zriptic/roclicks-skills `a8b66c1bb9ca` | The idea of copying generated files into Studio's local content folder for upload-free previews. Written fresh. |
 
 Techniques also studied without copying code (no licence, so reference only): Willikk/Roblox `c77902e8f59c`
 (pooling, hitstop, easing, camera shake, texture animation, R6 procedural layers).
+
+Method only, no text reused: the "calibrate away from AI defaults" step in `skills/game-design/SKILL.md`
+follows the approach of Anthropic's `frontend-design` skill (anthropics/skills, Apache-2.0), rewritten for
+Roblox games.
 
 ---
 
