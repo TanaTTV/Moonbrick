@@ -39,6 +39,20 @@ local services = {
 		IsServer = function()
 			return true
 		end,
+		IsClient = function()
+			return false
+		end,
+		-- Frame signals for the creative Scheduler; tests drive it with Scheduler.advance.
+		Heartbeat = {
+			Connect = function()
+				return { Disconnect = function() end }
+			end,
+		},
+		PreSimulation = {
+			Connect = function()
+				return { Disconnect = function() end }
+			end,
+		},
 	},
 	Players = {},
 	ServerScriptService = { Kit = { PlayerData = "PlayerData" } },

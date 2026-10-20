@@ -57,6 +57,71 @@ def material_node_tree(material, blender_version: tuple[int, ...], *, enable: bo
     return material.node_tree
 
 
+ROBLOX_FONT = re.compile(r"[A-Z][A-Za-z0-9]{1,40}")
+UI_KEYS = {"font", "displayFont", "corner", "stroke", "buttonFill"}
+
+
+def validate_direction(style: dict):
+    """Optional art-direction fields (design brief -> code): genres, references, ui, motion."""
+    genres = style.get("genres", [])
+    if not isinstance(genres, list) or len(genres) > 3 or any(not isinstance(g, str) or not g.strip() for g in genres):
+        raise ValueError("style.genres must list up to 3 genre names (base genre first)")
+    references = style.get("references", [])
+    if not isinstance(references, list) or len(references) > 6: raise ValueError("style.references must list up to 6 references")
+    for ref in references:
+        if not isinstance(ref, dict) or not all(isinstance(ref.get(k), str) and ref[k].strip() for k in ("source", "take")):
+            raise ValueError("each style.references entry needs source and take (what to borrow), optionally avoid")
+        if "avoid" in ref and not isinstance(ref["avoid"], str): raise ValueError("style.references avoid must be text")
+    ui = style.get("ui", {})
+    if not isinstance(ui, dict) or set(ui) - UI_KEYS: raise ValueError(f"style.ui keys: {', '.join(sorted(UI_KEYS))}")
+    for key in ("font", "displayFont"):
+        if key in ui and not (isinstance(ui[key], str) and ROBLOX_FONT.fullmatch(ui[key])): raise ValueError(f"style.ui.{key} must be an Enum.Font name")
+    for key, limit in (("corner", 40), ("stroke", 8)):
+        if key in ui and (type(ui[key]) != int or not 0 <= ui[key] <= limit): raise ValueError(f"style.ui.{key} must be 0..{limit}")
+    if ui.get("buttonFill", "gradient") not in ("gradient", "flat", "outline"): raise ValueError("style.ui.buttonFill must be gradient, flat or outline")
+    motion = style.get("motion", {})
+    if not isinstance(motion, dict) or any(not isinstance(v, str) for v in motion.values()): raise ValueError("style.motion values must be text")
+
+
+def theme(cfg: dict) -> str:
+    """Luau for the game's look: UI.useTheme plus an Fx palette, generated from the manifest's style."""
+    style = cfg["style"]
+    palette, ui = style["palette"], style.get("ui", {})
+    color = lambda key: f'Color3.fromHex("{palette[key]}")'
+    lines = [
+        f'-- Generated from assets/art.json ("{style["name"]}"): python KIT/scripts/assets.py theme assets/art.json',
+        "-- Edit the manifest, not this file, so the art direction stays in one place.",
+        'local ReplicatedStorage = game:GetService("ReplicatedStorage")',
+        "local UI = require(ReplicatedStorage.Kit.UI)",
+        "",
+        "local ArtStyle = {}",
+        "",
+        "-- Fx palette roles for Fx.play(def, at, { palette = ArtStyle.palette }).",
+        "ArtStyle.palette = {",
+        f'\tcore = {color("text")},',
+        f'\tglow = {color("primary")},',
+        f'\taccent = {color("accent")},',
+        f'\tspark = {color("accent")},',
+        f'\tdark = {color("surface")},',
+        f'\tsmoke = {color("secondary")},',
+        "}",
+        "",
+        "function ArtStyle.apply()",
+        "\tUI.useTheme({",
+        f'\t\tprimary = {color("primary")},',
+        f'\t\tsecondary = {color("secondary")},',
+        f'\t\tsurface = {color("surface")},',
+        f'\t\ttext = {color("text")},',
+    ]
+    for key in ("font", "displayFont"):
+        if key in ui: lines.append(f"\t\t{key} = Enum.Font.{ui[key]},")
+    for key in ("corner", "stroke"):
+        if key in ui: lines.append(f"\t\t{key} = {ui[key]},")
+    if "buttonFill" in ui: lines.append(f'\t\tbuttonFill = "{ui["buttonFill"]}",')
+    lines += ["\t})", "end", "", "return ArtStyle", ""]
+    return "\n".join(lines)
+
+
 def validate(path: Path) -> dict:
     cfg = json.loads(path.read_text(encoding="utf-8"))
     if cfg.get("schemaVersion") != 1: raise ValueError("art manifest schemaVersion must be 1")
@@ -67,12 +132,15 @@ def validate(path: Path) -> dict:
     palette = style.get("palette", {})
     for key in ("primary", "secondary", "accent", "surface", "text"):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(palette.get(key, ""))): raise ValueError(f"style.palette.{key} must be #RRGGBB")
+    validate_direction(style)
+    assets = cfg.get("assets")
+    if not isinstance(assets, list) or len(assets) > 128: raise ValueError("assets must be a list of 0..128 entries")
+    if not assets and "source" not in cfg:
+        return cfg  # art direction only: no Blender source yet
     source = cfg.get("source")
     if not isinstance(source, str) or not source or source.startswith("/") or ":" in source or Path(source).is_absolute() or ".." in Path(source).parts or "\\" in source:
         raise ValueError("source must be a relative path inside the manifest folder")
     if Path(source).suffix.lower() != ".blend": raise ValueError("source must be .blend")
-    assets = cfg.get("assets")
-    if not isinstance(assets, list) or not 1 <= len(assets) <= 128: raise ValueError("assets must have 1..128 entries")
     ids = set()
     for asset in assets:
         identifier = asset.get("id")
@@ -99,6 +167,7 @@ def validate(path: Path) -> dict:
 def export(manifest: Path, output: Path, blender: str):
     manifest = manifest.resolve(strict=True)
     cfg = validate(manifest)
+    if not cfg["assets"]: raise ValueError("the manifest lists no assets to export (art direction only)")
     source = (manifest.parent / cfg["source"]).resolve(strict=True)
     if not source.is_relative_to(manifest.parent): raise ValueError("source escapes the manifest folder through a symlink")
     if output.exists() or output.is_symlink(): raise ValueError("output must be a new directory; exports never overwrite approved assets")
@@ -136,7 +205,7 @@ def export(manifest: Path, output: Path, blender: str):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "export"))
+    parser.add_argument("command", choices=("validate", "export", "theme"))
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--blender", default=os.environ.get("BLENDER_PATH", "blender"))
@@ -144,6 +213,13 @@ def main():
     try:
         cfg = validate(args.manifest)
         if args.command == "validate": print(f"Art manifest OK: {cfg['style']['name']}, {len(cfg['assets'])} assets, meters, local FBX export")
+        elif args.command == "theme":
+            text = theme(cfg)
+            if args.output:
+                args.output.write_text(text, encoding="utf-8", newline="\n")
+                print(f"Wrote {args.output}")
+            else:
+                print(text, end="")
         elif not args.output: parser.error("export requires --output <new-directory>")
         else: export(args.manifest, args.output, args.blender)
     except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error: parser.exit(1, f"error: {error}\n")
