@@ -1,5 +1,7 @@
 # V1.1 before/after evidence
 
+> The three showcases, their stills (`docs/v1.1/evidence/`) and `VARIANTS.md` were removed later to keep the plugin lean; they remain in git history (commit 405f49d).
+
 What was measured on this branch, and what wasn't. No paid model runs were made for V1.1; the last
 provider-accounted benchmark is the V1.0 one in [docs/BENCHMARK.md](../BENCHMARK.md).
 

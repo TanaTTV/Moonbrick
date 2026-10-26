@@ -1,9 +1,7 @@
 # Designing with Moonbrick
 
 How to get a game that looks and feels like *yours* rather than a generic AI build. This covers the
-workflow, how to prompt, what the creative Kit can do, and where its limits are. The three V1.1
-showcases are worked examples: `examples/celestial-collapse`, `examples/mythic-hatch` and
-`examples/neon-frontier`.
+workflow, how to prompt, what the creative Kit can do, and where its limits are.
 
 ## The workflow
 
@@ -80,7 +78,7 @@ specific artwork, and it won't commit someone else's image to your repo.
 
 Three routes, from lightest to heaviest:
 1. **Procedural (`Geo`)**: lathed, extruded and tubed shapes with vertex colours, dressed on the client
-   (all three showcases). No tools, no uploads, stylised low-poly look.
+   No tools, no uploads, stylised low-poly look.
 2. **Parts and the world folder**: classic Roblox building, exported to `src/world/*.model.json`.
 3. **Blender (optional, `moonbrick:assets`)**: `assets/art.json` sets budgets and style; `assets.py export`
    validates and exports FBX locally. Import, upload and rig correctness are separate, manual gates.

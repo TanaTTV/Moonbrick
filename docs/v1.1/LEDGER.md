@@ -1,5 +1,7 @@
 # V1.1 ledger: what was built, reused, verified and not verified
 
+> The three showcases, their stills (`docs/v1.1/evidence/`) and `VARIANTS.md` were removed later to keep the plugin lean; they remain in git history (commit 405f49d).
+
 Branch `v1.1/creative-engine`, cut from `main` at `1d847a5` (v1.0.0). Not merged or released.
 Studio checks ran in disposable places in Studio 0.743.0.7431133 on one Windows desktop.
 

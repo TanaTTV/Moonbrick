@@ -42,7 +42,7 @@ Untended output drifts to the same look. Choose each of these deliberately rathe
 Prefer one focal colour against restrained surroundings, a shape language that repeats (round and soft,
 or sharp and angular), and motion with anticipation → impact → follow-through.
 For effects, animation, procedural props and themed UI, read `KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
-Tex, Geo). Worked examples: `examples/celestial-collapse`, `mythic-hatch`, `neon-frontier`.
+Tex, Geo).
 
 ## 4. Game feel checklist (every player-facing action)
 - **Anticipation → action → impact → follow-through.** The peak stacks 3+ channels: visual, screen

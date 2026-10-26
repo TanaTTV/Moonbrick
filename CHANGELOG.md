@@ -5,7 +5,7 @@ Creative engine and design workflow. **The nine 1.0 waivers are still open** (to
 - **Creative Kit:** `Fx` (layered effects on a shared `Scheduler`, pooling, Low/Medium/High quality, markers, hitstop, time scale; `Fx.emit` adapts RoClicks' MIT Emit convention), `Motion`, `Pose` (R15/R6, rig-checked clips with markers), `Audio`, `Tex`, `Geo` (procedural meshes dressed on clients). The V1 `VFX` and `UI` APIs are unchanged.
 - **UI shape language:** `UI.useTheme` with `buttonFill`, `displayFont`, `panelStroke`, `panelTransparency`, `labelStroke`; defaults reproduce 1.0. `VFX.Style.titleFont`.
 - **Creative brief:** the game-design skill asks at most 3 questions or offers 3 directions, handles hybrid genres and reference images, and runs a top-3 screenshot loop. `assets/art.json` records the direction; `assets.py theme` generates `ArtStyle.luau`. Guide: [docs/DESIGNING.md](docs/DESIGNING.md).
-- **Showcases:** Celestial Collapse, Mythic Hatch, Neon Frontier (`create-example.py --example …`), built in CI and playtested in Studio. Artistic variants: [docs/v1.1/VARIANTS.md](docs/v1.1/VARIANTS.md).
+- **Removed the demo games** (Crystal Rush, Element Brawl and the three V1.1 showcases), `create-example.py` and their CI builds to keep the plugin lean.
 - **Tools:** `scripts/fxtex.py` (effect textures) and `scripts/sfx.py` (placeholder sounds), stdlib only, with upload-free Studio previews on your own PC.
 - **Cards:** creative APIs live in `tools/KIT_CREATIVE.md` (22 KB, read only for visual work); the core card grew by 0.3 KB.
 - **Fixes:** generated mesh faces were inside-out; clients' 8-mesh EditableMesh limit is handled by baking fixed-size copies.
