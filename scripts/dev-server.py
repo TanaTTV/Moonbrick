@@ -189,6 +189,7 @@ def take_lock(lock: Path) -> bool:
 def ensure(project: Path):
     project = project.resolve()
     cfg = json.loads((project / "default.project.json").read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict): raise ValueError("default.project.json must be a JSON object")
     name = cfg.get("name", project.name)
     port = cfg.get("servePort", 34872)
     if type(port) != int or not 1024 <= port <= 65535: raise ValueError("servePort must be 1024..65535")
@@ -222,7 +223,7 @@ def ensure(project: Path):
     process, started = None, False
     try:
         with (project / ".rojo.log").open("a", encoding="utf-8") as log:
-            process = subprocess.Popen([rojo, "serve", "default.project.json", "--port", str(port), "--address", "127.0.0.1"], cwd=project, stdout=log, stderr=log, start_new_session=os.name != "nt", creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            process = subprocess.Popen([rojo, "serve", "default.project.json", "--port", str(port), "--address", "127.0.0.1"], cwd=project, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=os.name != "nt", creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             if process.poll() is not None: raise ValueError("Rojo failed to start; see .rojo.log")
