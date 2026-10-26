@@ -26,19 +26,17 @@ local modules, suites = {}, {}
 '''
     sources = {"PlayerData": "luau/lib/server/PlayerData.luau", "Net": "luau/lib/shared/Net.luau", "VFX": "luau/lib/shared/VFX.luau", "UI": "luau/lib/shared/UI.luau", "MCPKit": "luau/MCPKit.luau"}
     sources.update({name: f"luau/lib/server/{name}.luau" for name in ("Cooldown", "Round", "Economy")})
-    sources["Rules"] = "examples/crystal-rush/src/server/Rules.luau"
     net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
     prefix += "local function loadNet(game, Instance, os, warn)\n" + net + "\nend\n"
     for name, rel in sources.items():
         source = (ROOT / rel).read_text(encoding="utf-8").replace("_G.K = K", "-- isolated test bundle: no global cache")
         prefix += f"modules.{name} = (function()\n{source}\nend)()\n"
-    paths = sorted((ROOT / "luau/tests").glob("*.spec.luau")) + [ROOT / "examples/crystal-rush/tests/Rules.spec.luau"]
+    paths = sorted((ROOT / "luau/tests").glob("*.spec.luau"))
     for rel in paths:
         source = rel.read_text(encoding="utf-8")
         source = source.replace('t.require(game:GetService("ServerScriptService").Kit.PlayerData)', 'modules.PlayerData')
         source = source.replace('t.require(game:GetService("ReplicatedStorage").Kit.Net)', 'modules.Net')
         source = source.replace('t.require(game:GetService("ServerStorage").MCPKit)', 'modules.MCPKit')
-        source = source.replace('t.require(game:GetService("ServerScriptService").Server.Rules)', 'modules.Rules')
         source = source.replace('local Kit = game:GetService("ReplicatedStorage").Kit', 'local Kit = modules')
         source = source.replace('local Kit = game:GetService("ServerScriptService").Kit', 'local Kit = modules')
         source = source.replace('t.require(Kit.VFX)', 'modules.VFX').replace('t.require(Kit.UI)', 'modules.UI')

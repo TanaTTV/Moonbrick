@@ -325,6 +325,65 @@ task.spawn(function()
 		t.eq(store.values.Player_1.data.Coins, 4, "last good save kept")
 		close()
 	end)
+	t.test("loaded listeners get the live data table and can disconnect", function()
+		local players, player, close = environment()
+		local data = loadPlayerData()
+		local store = data.memoryStore()
+		data.start({ template = { Coins = 0 }, store = store })
+		local calls, onceCalls = 0, 0
+		data.loaded:Connect(function(_, loaded)
+			calls += 1
+			loaded.Coins += 50
+		end)
+		data.loaded:Once(function()
+			onceCalls += 1
+		end)
+		local dropped = data.loaded:Connect(function()
+			error("disconnected listener ran")
+		end)
+		dropped:Disconnect()
+		t.eq(dropped.Connected, false)
+		players.PlayerAdded:Fire(player)
+		t.eq(data.get(player).Coins, 50, "listener changed the live table")
+		t.ok(data.save(player))
+		t.eq(store.values.Player_1.data.Coins, 50, "listener change saved")
+		local second = { Name = "Second", UserId = 2, Parent = players, FindFirstChild = player.FindFirstChild }
+		players.PlayerAdded:Fire(second)
+		t.eq(calls, 2)
+		t.eq(onceCalls, 1, "Once fires a single time")
+		close()
+	end)
+	t.test("live data that becomes unsaveable kicks by default and keeps the last good save", function()
+		local players, player, close = environment()
+		local data = loadPlayerData()
+		local store = data.memoryStore()
+		data.start({ template = { Coins = 0 }, store = store })
+		players.PlayerAdded:Fire(player)
+		data.set(player, "Coins", 9)
+		t.ok(data.save(player))
+		data.get(player).Coins = 0 / 0 -- direct mutation bypasses set/increment
+		t.eq(data.save(player), false)
+		t.eq(player.kicked, true, "player kicked instead of playing on without saves")
+		t.eq(store.values.Player_1.data.Coins, 9)
+		close()
+
+		players, player, close = environment()
+		data = loadPlayerData()
+		local reason
+		data.start({
+			template = { Coins = 0 },
+			store = data.memoryStore(),
+			onSaveInvalid = function(_, why)
+				reason = why
+			end,
+		})
+		players.PlayerAdded:Fire(player)
+		data.get(player).Coins = math.huge
+		t.eq(data.save(player), false)
+		t.ok(reason and reason:find("non-finite", 1, true), tostring(reason))
+		t.eq(player.kicked, nil, "callback replaces the default kick")
+		close()
+	end)
 	t.test(
 		"invalid saved data: default refuses without writing; onInvalidData recovers through the Player API",
 		function()
