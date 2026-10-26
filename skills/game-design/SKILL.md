@@ -10,7 +10,7 @@ If `docs/design.md` doesn't exist, offer to write it with the user using `design
 
 ## 2. Game feel checklist (every player-facing action)
 Each meaningful action gets **anticipation → action → impact → follow-through**:
-- **Anticipation:** wind-up, camera push-in, sound/visual charge (the Power Coin's 3 rising flips).
+- **Anticipation:** wind-up, camera push-in, sound/visual charge (e.g. a dash crouches and glows for 0.2 s before launching).
 - **Impact:** the peak moment stacks 3+ channels at once: visual (`VFX.impact`/`burst`), screen (`VFX.shake`/`flash`/`fovPunch`), UI (`VFX.title`, number pop), sound.
 - **Follow-through:** lingering aura/particles, camera settle, a readable new state.
 - **Escalation:** repeated actions grow (bigger flips, combo counters, rising pitch).
