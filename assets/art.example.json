@@ -4,13 +4,63 @@
   "source": "source/props.blend",
   "style": {
     "name": "Moonstone Garden",
+    "genres": [
+      "collection sim",
+      "cozy fantasy"
+    ],
+    "references": [
+      {
+        "source": "Ori and the Blind Forest (key art)",
+        "take": "glowing focal object against cool, low-contrast surroundings",
+        "avoid": "painterly detail that turns to noise on phones"
+      },
+      {
+        "source": "Pet Simulator 99 (hatch moment)",
+        "take": "a 2-3 s hatch with anticipation and a rarity-coloured payoff",
+        "avoid": "screen-filling flashes on every hatch"
+      }
+    ],
     "shapeLanguage": "Broad silhouettes, six-sided crystals, soft low-poly rocks, readable small-screen proportions",
     "materials": "Matte amethyst and slate, restrained gold highlights; one shared palette and material family",
     "lighting": "Cool ambient fill, warm focal light, no global bloom wash; verify readability on mobile",
-    "palette": { "primary": "#A68AE8", "secondary": "#80B6C8", "accent": "#FFD785", "surface": "#232E48", "text": "#F0F4FF" }
+    "palette": {
+      "primary": "#A68AE8",
+      "secondary": "#80B6C8",
+      "accent": "#FFD785",
+      "surface": "#232E48",
+      "text": "#F0F4FF"
+    },
+    "ui": {
+      "font": "Nunito",
+      "displayFont": "Kalam",
+      "corner": 18,
+      "stroke": 2,
+      "buttonFill": "flat"
+    },
+    "motion": {
+      "feel": "soft and springy: backOut pops, slow idle bobs, short anticipation before rewards"
+    }
   },
   "assets": [
-    { "id": "crystal", "kind": "static", "objects": ["Crystal"], "maxTriangles": 500, "maxMaterials": 2, "maxTextureSize": 1024 },
-    { "id": "rock", "kind": "static", "objects": ["Rock"], "maxTriangles": 500, "maxMaterials": 2, "maxTextureSize": 1024 }
+    {
+      "id": "crystal",
+      "kind": "static",
+      "objects": [
+        "Crystal"
+      ],
+      "maxTriangles": 500,
+      "maxMaterials": 2,
+      "maxTextureSize": 1024
+    },
+    {
+      "id": "rock",
+      "kind": "static",
+      "objects": [
+        "Rock"
+      ],
+      "maxTriangles": 500,
+      "maxMaterials": 2,
+      "maxTextureSize": 1024
+    }
   ]
 }

@@ -63,7 +63,7 @@ def safe_root(project: Path) -> Path:
 def sync(project: Path):
     project = safe_root(project)
     sources = {"tools/MCPKit.luau": KIT / "luau/MCPKit.luau", "tools/check.sh": KIT / "template/tools/check.sh",
-               "tools/KIT_API.md": KIT / "luau/API.md"}
+               "tools/KIT_API.md": KIT / "luau/API.md", "tools/KIT_CREATIVE.md": KIT / "luau/API-CREATIVE.md"}
     for source, dest in (("luau/lib/shared", "src/kit/shared"), ("luau/lib/server", "src/kit/server"), ("luau/tests", "tests/kit"), ("template/src/kit/server", "src/kit/server"), ("luau/recipes", "tools/recipes")):
         for file in (KIT / source).rglob("*"):
             if file.is_file():

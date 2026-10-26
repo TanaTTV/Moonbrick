@@ -23,6 +23,20 @@ MODULES = [
     ("luau/lib/server/Economy.luau", "server", 'require(ServerScriptService.Kit.Economy)'),
     ("template/src/kit/server/DebugHooks.luau", "server (Studio only)", 'require(ServerScriptService.Kit.DebugHooks)'),
 ]
+# Creative modules get their own card, read only for visual/animation/audio work.
+CREATIVE_MODULES = [
+    ("luau/lib/shared/Fx.luau", "client (presentation; on the server every part replicates)", 'require(ReplicatedStorage.Kit.Fx)'),
+    ("luau/lib/shared/Motion.luau", "both", 'require(ReplicatedStorage.Kit.Motion)'),
+    ("luau/lib/shared/Pose.luau", "client (Transform does not replicate)", 'require(ReplicatedStorage.Kit.Pose)'),
+    ("luau/lib/shared/Audio.luau", "both (client = local only)", 'require(ReplicatedStorage.Kit.Audio)'),
+    ("luau/lib/shared/Tex.luau", "client", 'require(ReplicatedStorage.Kit.Tex)'),
+    ("luau/lib/shared/Geo.luau", "client or server (runtime meshes don't replicate)", 'require(ReplicatedStorage.Kit.Geo)'),
+    ("luau/lib/shared/Scheduler.luau", "both", 'require(ReplicatedStorage.Kit.Scheduler)'),
+]
+CARDS = {
+    "luau/API.md": ("Moonbrick Kit API", MODULES),
+    "luau/API-CREATIVE.md": ("Moonbrick Kit API: creative modules (Fx, Motion, Pose, Audio, Tex, Geo)", CREATIVE_MODULES),
+}
 # Classes whose methods are public even though they are not the module table.
 EXTRA_OWNERS = {"PlayerData": ("Session",)}
 FUNCTION = re.compile(r"^function (\w+)[.:](\w+)(\(.*)$")
@@ -128,9 +142,9 @@ def card_for(rel: str, side: str, require: str) -> list[str]:
     return out
 
 
-def render() -> str:
+def render(title: str = "Moonbrick Kit API", modules: list | None = None) -> str:
     out = [
-        "# Moonbrick Kit API",
+        f"# {title}",
         "",
         "Generated from the Kit sources by `scripts/kit-api.py`; do not edit by hand.",
         "Use this card for exact signatures. Open the Kit source only when the card is not enough.",
@@ -138,25 +152,31 @@ def render() -> str:
         "`Mod.fn(self: Obj, ...)` is a method: call it as `obj:fn(...)` on the object returned by `Mod.new`.",
         "",
     ]
-    for rel, side, require in MODULES:
+    for rel, side, require in MODULES if modules is None else modules:
         out += card_for(rel, side, require)
     return "\n".join(out).rstrip() + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if luau/API.md is out of date")
+    parser.add_argument("--check", action="store_true", help="fail if an API card is out of date")
     args = parser.parse_args(argv)
-    text = render()
+    stale = []
+    for rel, (title, modules) in CARDS.items():
+        path = ROOT / rel
+        text = render(title, modules)
+        if args.check:
+            current = path.read_text(encoding="utf-8") if path.exists() else ""
+            if current.replace("\r\n", "\n") != text:
+                stale.append(rel)
+        else:
+            path.write_text(text, encoding="utf-8", newline="\n")
+            print(f"wrote {rel} ({len(text.encode())} bytes)")
+    if stale:
+        print(f"{', '.join(stale)} out of date; run python scripts/kit-api.py", file=sys.stderr)
+        return 1
     if args.check:
-        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
-        if current.replace("\r\n", "\n") != text:
-            print("luau/API.md is out of date; run python scripts/kit-api.py", file=sys.stderr)
-            return 1
-        print("luau/API.md is up to date")
-        return 0
-    OUTPUT.write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {OUTPUT.relative_to(ROOT).as_posix()} ({len(text.encode())} bytes)")
+        print("API cards are up to date")
     return 0
 
 

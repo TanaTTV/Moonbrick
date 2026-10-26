@@ -137,4 +137,55 @@ class AssetTests(unittest.TestCase):
                 assets.validate_skin_budget(3, [[weight]])
 
 
+class ArtDirectionTests(unittest.TestCase):
+    """The art manifest doubles as the art-direction record: brief fields, and a generated theme."""
+
+    def manifest(self, **style_extra):
+        cfg = json.loads((ROOT / "assets/art.example.json").read_text(encoding="utf-8"))
+        cfg["style"].update(style_extra)
+        return cfg
+
+    def check(self, cfg):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "art.json"
+            path.write_text(json.dumps(cfg), encoding="utf-8")
+            return assets.validate(path)
+
+    def test_example_carries_a_full_direction(self):
+        cfg = self.check(self.manifest())
+        self.assertTrue(cfg["style"]["genres"] and cfg["style"]["references"] and cfg["style"]["ui"])
+
+    def test_direction_only_manifest_needs_no_blender_source(self):
+        cfg = self.manifest()
+        cfg["assets"] = []
+        del cfg["source"]
+        self.assertEqual(self.check(cfg)["assets"], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "art.json"
+            path.write_text(json.dumps(cfg), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "no assets to export"):
+                assets.export(path, Path(tmp) / "out", "blender")
+
+    def test_bad_direction_fields_are_rejected(self):
+        cases = {
+            "genres": (["a", "b", "c", "d"], "up to 3"),
+            "references": ([{"source": "x"}], "needs source and take"),
+            "ui": ({"buttonFill": "glossy"}, "buttonFill"),
+        }
+        for key, (value, message) in cases.items():
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, message):
+                self.check(self.manifest(**{key: value}))
+        for ui in ({"font": "Comic Sans"}, {"corner": 99}, {"shadow": 1}):
+            with self.subTest(ui=ui), self.assertRaises(ValueError):
+                self.check(self.manifest(ui=ui))
+
+    def test_theme_mirrors_palette_and_ui_tokens(self):
+        text = assets.theme(self.check(self.manifest()))
+        self.assertIn('primary = Color3.fromHex("#A68AE8")', text)
+        self.assertIn("displayFont = Enum.Font.Kalam", text)
+        self.assertIn('buttonFill = "flat"', text)
+        self.assertIn("ArtStyle.palette = {", text)
+        self.assertTrue(text.endswith("return ArtStyle\n"))
+
+
 if __name__ == "__main__": unittest.main()

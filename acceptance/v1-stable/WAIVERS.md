@@ -1,6 +1,8 @@
-# V1 stable — waivers (approved, deferred to v1.1)
+# V1 stable — waivers (approved, deferred to v1.2)
 
 **Status: APPROVED by the repository owner (TanaTTV) on 2026-10-19: all nine pending gates are deferred to v1.1.** Each is recorded in [gates.json](gates.json) as `waived` with `approved_by`, `reason` and an evidence record pointing here. These are known limitations of 1.0.0, not passes.
+
+**Moved to v1.2 by the owner on 2026-10-26:** v1.1 ships as 1.1.0-beta.1 (creative engine) without these checks, so all nine move to v1.2. The approval above is unchanged otherwise.
 
 As of 2026-10-19: **4 passed** (Blender static/PBR, Blender rig/animation, terrain import, forced disconnect), **9 pending**. Each pending gate needs either the owner's hands (a device, a controller, a new private test experience, an interactive Claude session) or something that can't be produced safely at all (a real Roblox outage).
 
@@ -16,6 +18,6 @@ As of 2026-10-19: **4 passed** (Blender static/PBR, Blender rig/animation, terra
 | `datastore-provider-failures` | Injected throttling/outage retries in the shipped Luau suite, the live budget scenario and the Studio lifecycle harness; real request budgets observed | A *real* Roblox throttle or outage | Real failure modes may differ from injected ones | Waive: a real outage can't be produced safely, and deliberately throttling is not allowed. |
 | `plugin-interactive-reload` | Isolated install/upgrade test (CI), remote marketplace install verified | Fresh interactive Claude Code session running `/reload-plugins` and the commands | Low: the files and hooks are verified; only the interactive reload is unobserved | Waive for 1.0, or ~5 min in a fresh session. |
 
-## v1.1
+## v1.2
 
-Each row above is a v1.1 task: run the missing check and replace the waiver with pass evidence (or a fix plus pass evidence). The DataStore rows need a new private disposable test experience under the existing [runbook](../datastore/README.md).
+Each row above is a v1.2 task: run the missing check and replace the waiver with pass evidence (or a fix plus pass evidence). The DataStore rows need a new private disposable test experience under the existing [runbook](../datastore/README.md).
