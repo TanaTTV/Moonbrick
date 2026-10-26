@@ -20,10 +20,14 @@ if [ "${1:-}" = --fix ]; then
 	command -v stylua >/dev/null 2>&1 || { echo 'error: missing stylua' >&2; exit 2; }
 	stylua "${dirs[@]}" >"$tmp/format" 2>&1 || { cat "$tmp/format"; echo 'error: stylua failed'; exit 2; }
 fi
+# Roblox definitions pinned to the luau-lsp release in rokit.toml (1.70.1); keep in sync with setup-tools.sh.
+DEFS_URL=https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/0382dc76ca9b73df3c8e7c9cd85a8dd493cbd0ae/scripts/globalTypes.PluginSecurity.d.luau
+DEFS_SHA256=e441a5cefd41d05649e14659b5bc23147bb1637b91ff86b04cbf1f45d8a4573c
 if [ ! -s globalTypes.d.luau ]; then
-	curl -fsSL --connect-timeout 10 --max-time 60 -o "$tmp/types" \
-		https://luau-lsp.pages.dev/type-definitions/globalTypes.PluginSecurity.d.luau \
+	curl -fsSL --connect-timeout 10 --max-time 60 -o "$tmp/types" "$DEFS_URL" \
 		&& [ -s "$tmp/types" ] || { echo 'error: could not download Roblox definitions'; exit 2; }
+	sum="$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$tmp/types"; else shasum -a 256 "$tmp/types"; fi)"
+	[ "${sum%% *}" = "$DEFS_SHA256" ] || { echo 'error: Roblox definitions checksum mismatch'; exit 2; }
 	mv "$tmp/types" globalTypes.d.luau || exit 2
 fi
 rojo sourcemap default.project.json -o "$tmp/sourcemap.json" >"$tmp/rojo" 2>&1 \

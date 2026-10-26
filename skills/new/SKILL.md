@@ -16,7 +16,7 @@ The plugin root is two folders above this skill's base directory (`<base>/../..`
    - Open Roblox Studio (a new Baseplate is fine). If Studio was already open during setup, restart it so the Rojo plugin loads.
    - Make sure the Studio MCP is enabled (Studio Assistant settings) so Claude can reach Studio.
    - Plugins tab → Rojo → **Connect**.
-6. When they confirm, verify in one call: `list_roblox_studios`, then `execute_luau` (Edit): `local K=require(game.ServerStorage.MCPKit) return K.tree("game.ReplicatedStorage", 2) .. "\n" .. K.tree("game.ServerScriptService", 2)` — expect `Kit` with `VFX/UI/Net` and `Kit` with `PlayerData/DebugHooks/DevTools`.
+6. When they confirm, verify in one call: `list_roblox_studios`, then `execute_luau` (Edit): `local K=require(game.ServerStorage.MCPKit) return K.tree("game.ReplicatedStorage", 2) .. "\n" .. K.tree("game.ServerScriptService", 2)` — expect `Kit` with `VFX/UI/Net` and `Kit` with `PlayerData/Cooldown/Round/Economy/DebugHooks/DevTools`.
 7. Wrap up with next steps:
    - For best results, start Claude Code **inside the project folder** from now on (loads its `CLAUDE.md`; the session hook keeps Rojo running).
    - Offer to write `docs/design.md` together (game-design skill) before building features.

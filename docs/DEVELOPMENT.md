@@ -32,7 +32,7 @@ Optional native Blender test:
 python scripts/test-blender.py --blender "<Blender executable>"
 ```
 
-Blender 5.2.2 LTS was run locally. Static props, FBX native reimport/scale, budget refusal, source preservation and output refusal passed. Rig animation, PBR texture import and Roblox mesh round-trip remain unproven. CLI launches use `--factory-startup --disable-autoexec` and pass arguments separately; input scenes are never saved by the exporter. The fixture generator writes a new, explicitly named scene.
+Blender 5.2.2 LTS was run locally. Static props, FBX native reimport/scale, budget refusal, source preservation and output refusal passed. Studio import of the PBR prop and the rig/animation fixture passed on 2026-10-16 (rigs need Animation Editor *Rest Pose Source = Imported Rig*); see [the evidence](../acceptance/v1-stable/evidence/2026-10-16-blender-studio.md). CLI launches use `--factory-startup --disable-autoexec` and pass arguments separately; input scenes are never saved by the exporter. The fixture generator writes a new, explicitly named scene.
 
 Plugin checks (no model session involved):
 
@@ -42,9 +42,9 @@ claude plugin validate --strict .claude-plugin/plugin.json
 claude plugin validate --strict skills
 ```
 
-CI checks the host regressions, pinned Luau session/game rules, actual tool checking/building, real Rojo integration, 0.1 upgrade and plugin manifests/components. It does not install Studio, publish assets or access DataStores. Remote CI results are unavailable until this development branch is pushed; do not describe authored YAML as a passing hosted run.
+CI checks the host regressions, pinned Luau session/game rules, actual tool checking/building, real Rojo integration, 0.1 upgrade and plugin manifests/components. It does not install Studio, publish assets or access DataStores. Only a hosted GitHub Actions run counts as CI evidence; do not describe authored YAML or an unpushed branch as passing.
 
-Rojo startup proves its listener belongs to the launched process or a child before recording ownership. It uses native `netstat`/PowerShell on Windows and `lsof`/`ps` on macOS/Linux. Missing inspection tools fail closed with a status message; existing foreign servers are never stopped or claimed.
+Rojo startup proves its listener belongs to the launched process or a child before recording ownership. It uses `netstat` plus a native process snapshot on Windows, `lsof`/`ps` on macOS/Linux (`/proc` when Linux has no `lsof`). Missing inspection tools fail closed with a status message; existing foreign servers are never stopped or claimed.
 
 ## Upgrading existing projects
 
