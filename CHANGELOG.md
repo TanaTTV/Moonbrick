@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- **Removed the demo games** (Crystal Rush, Element Brawl), `scripts/create-example.py` and their CI build to keep the plugin lean. The libraries, recipes and template are unchanged.
+- **PlayerData:** `PlayerData.loaded` listeners now get the live data table (it was a BindableEvent, which passed a copy, so changes made in a listener were never saved); it supports `Connect`, `Once` and `Wait`. Live data that becomes unsaveable (NaN, invalid UTF-8, mixed keys) no longer fails every autosave silently until the player leaves: the player is kicked by default, keeping the last good save, or `onSaveInvalid` is called.
+- **Rojo startup:** the Windows ownership check no longer depends on English `netstat` text; Linux without `lsof` falls back to `/proc`; a failed launch stops its own Rojo instead of leaving it holding the port, which blocked every later session.
+
 ## 1.0.0 (2026-10-19)
 First stable release. 4 of 13 stable gates passed in Studio; the other 9 were waived by the owner and deferred to v1.1 ([details](acceptance/v1-stable/WAIVERS.md)). **Known limitations, not yet verified:** Device Emulator touch layouts, a real gamepad, real-phone performance, 2-player streaming, live DataStore engine restart, natural 10-minute lock expiry, two independent live servers, real provider outages, and an interactive `/reload-plugins` session.
 - **Element Brawl showcase** (`python scripts/create-example.py <dir> --example element-brawl`): a Smash-style platform fighter with damage-percent knockback, blast zones, stocks, four element specials (Flame Dash, Frost Lance, Thunder Blink, Gale Burst), double/recovery jumps, a side-on framing camera, bots, a damage HUD and saved Wins/KOs, built on Net, Cooldown, Round, PlayerData, VFX and UI. Its rules run in the headless Luau suite and the generated project is type-checked and built in CI. Playtested in Studio 0.743: every special and the strike apply their exact damage, launches reach player and bot, KOs, eliminations and results work.
