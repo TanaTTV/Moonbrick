@@ -380,12 +380,23 @@ function Geo.build(fn: (Builder) -> (), opts: PartOptions?): MeshPart
 end
 
 local cache: { [string]: MeshPart } = {}
+local building: { [string]: boolean } = {}
 
 -- A template MeshPart built once per key; Clone() it for each use (clones share the mesh data).
+-- Yields on the first build; concurrent callers for the same key wait for that one build.
 function Geo.cached(key: string, fn: (Builder) -> (), opts: PartOptions?): MeshPart
+	while building[key] do
+		task.wait()
+	end
 	local template = cache[key]
 	if not template then
-		template = Geo.build(fn, opts)
+		building[key] = true
+		local ok, result: any = pcall(Geo.build, fn, opts)
+		building[key] = nil
+		if not ok then
+			error(result, 0) -- not cached: a later call retries
+		end
+		template = result
 		cache[key] = template
 	end
 	return template

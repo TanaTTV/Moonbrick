@@ -1,7 +1,7 @@
 # Changelog
 
-## Unreleased: 1.1.0 (branch `v1.1/creative-engine`)
-Creative engine and design workflow. **The nine 1.0 waivers are still open** (touch, gamepad, phones, 2-player streaming, live DataStore scenarios); nothing here verifies them. Evidence and gaps: [docs/v1.1/LEDGER.md](docs/v1.1/LEDGER.md).
+## 1.1.0-beta.1 (unreleased)
+Beta of the creative engine and design workflow (branch `v1.1/creative-engine`), plugin version 1.1.0-beta.1. **The nine 1.0 waivers are still open and move to 1.2** (touch, gamepad, phones, 2-player streaming, live DataStore scenarios); nothing here verifies them. Evidence and gaps: [docs/v1.1/LEDGER.md](docs/v1.1/LEDGER.md).
 - **Creative Kit:** `Fx` (layered effects on a shared `Scheduler`, pooling, Low/Medium/High quality, markers, hitstop, time scale; `Fx.emit` adapts RoClicks' MIT Emit convention), `Motion`, `Pose` (R15/R6, rig-checked clips with markers), `Audio`, `Tex`, `Geo` (procedural meshes dressed on clients). The V1 `VFX` and `UI` APIs are unchanged.
 - **UI shape language:** `UI.useTheme` with `buttonFill`, `displayFont`, `panelStroke`, `panelTransparency`, `labelStroke`; defaults reproduce 1.0. `VFX.Style.titleFont`.
 - **Creative brief:** the game-design skill asks at most 3 questions or offers 3 directions, handles hybrid genres and reference images, and runs a top-3 screenshot loop. `assets/art.json` records the direction; `assets.py theme` generates `ArtStyle.luau`. Guide: [docs/DESIGNING.md](docs/DESIGNING.md).
@@ -9,6 +9,7 @@ Creative engine and design workflow. **The nine 1.0 waivers are still open** (to
 - **Tools:** `scripts/fxtex.py` (effect textures) and `scripts/sfx.py` (placeholder sounds), stdlib only, with upload-free Studio previews on your own PC.
 - **Cards:** creative APIs live in `tools/KIT_CREATIVE.md` (22 KB, read only for visual work); the core card grew by 0.3 KB.
 - **Fixes:** generated mesh faces were inside-out; clients' 8-mesh EditableMesh limit is handled by baking fixed-size copies.
+- **Fx/Geo review fixes:** torus/shard layers fall back to ring/wedge parts when meshes can't be made (published games without "Allow Mesh & Image APIs"), and a layer that fails to build no longer leaks the effect; `Geo.cached` builds each key once even for concurrent first callers, and `Fx.preload()` warms Fx's mesh shapes at startup; overlapping `freeze` calls no longer freeze forever, and a 60 s real-time watchdog ends any effect; `Fx.play` runs its first step on the next frame, so `:on()` listeners see events at t = 0. Headless tests cover each.
 
 ## 1.0.0 (2026-10-19)
 First stable release. 4 of 13 stable gates passed in Studio; the other 9 were waived by the owner and deferred to v1.1 ([details](acceptance/v1-stable/WAIVERS.md)). **Known limitations, not yet verified:** Device Emulator touch layouts, a real gamepad, real-phone performance, 2-player streaming, live DataStore engine restart, natural 10-minute lock expiry, two independent live servers, real provider outages, and an interactive `/reload-plugins` session.

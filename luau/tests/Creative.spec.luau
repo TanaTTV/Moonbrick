@@ -1,4 +1,5 @@
 -- Pure logic of the creative modules. Runs in Studio (K.test) and headless in CI (no Instances).
+-- The Fx/Geo playback tests at the end need the headless engine stand-ins (`t.fixtures`).
 return function(t: any)
 	local Kit = game:GetService("ReplicatedStorage").Kit
 	local Motion = t.require(Kit.Motion)
@@ -126,5 +127,126 @@ return function(t: any)
 		Scheduler.advance(0) -- removes the stopped job
 		t.ok(math.abs(seen - 0.1) < 1e-9, "0.2 s at half speed")
 		t.eq(Scheduler.count(), 0)
+	end)
+
+	if not t.fixtures then
+		return
+	end
+	local Geo = t.require(Kit.Geo)
+	local assets = t.fixtures.assets
+
+	local function named(name: string): any
+		local found
+		for _, inst in t.fixtures.instances do
+			if inst.Name == name then
+				found = inst
+			end
+		end
+		return found
+	end
+
+	local rings = Fx.define({
+		name = "Rings",
+		layers = {
+			{ kind = "mesh", name = "Halo", shape = "torus", keys = { { t = 0, size = 4 }, { t = 0.2, size = 6 } } },
+			{ kind = "mesh", name = "Spike", shape = "shard", keys = { { t = 0, size = 1 } } },
+		},
+	})
+
+	t.test("Fx falls back to plain parts when meshes can't be made", function()
+		local before = Fx.live()
+		assets.denied = true
+		local handle = Fx.play(rings, CFrame.new())
+		assets.denied = false
+		Scheduler.advance(0) -- the first frame applies the keys
+		local halo, spike = named("Halo"), named("Spike")
+		t.eq(halo.ClassName, "Part")
+		t.eq(halo.Shape, Enum.PartType.Cylinder)
+		t.ok(math.abs(halo.Size.X - 0.48) < 1e-6 and halo.Size.Y == 4, "torus disc keeps its thickness")
+		t.eq(spike.ClassName, "WedgePart")
+		t.eq(Fx.live(), before + 1)
+		handle:stop()
+		t.eq(Fx.live(), before)
+	end)
+
+	t.test("a layer that fails to build rolls the effect back", function()
+		local before, jobs = Fx.live(), Scheduler.count()
+		t.fails(function()
+			Fx.play(Fx.define({ name = "Broken", layers = { { kind = "particles", count = 5 } } }), CFrame.new())
+		end, "does not implement Attachment")
+		t.eq(Fx.live(), before)
+		t.eq(Scheduler.count(), jobs)
+		t.ok(named("Fx_Broken").destroyed, "partial root destroyed")
+	end)
+
+	t.test("Geo.cached builds once for concurrent first callers; Fx.preload warms Fx shapes", function()
+		local builds = assets.builds
+		local results = {}
+		for i = 1, 2 do
+			task.spawn(function()
+				results[i] = Geo.cached("SingleFlight", function(b)
+					b:box(CFrame.identity, Vector3.one)
+				end)
+			end)
+		end
+		t.eq(results[1], nil, "first build yields")
+		task.wait(0.5)
+		t.ok(results[1] ~= nil and results[1] == results[2], "both callers share one template")
+		t.eq(assets.builds - builds, 1)
+		t.fails(function()
+			Geo.cached("Retry", function()
+				error("bad shape")
+			end)
+		end, "bad shape")
+		t.ok(Geo.cached("Retry", function(b)
+			b:box(CFrame.identity, Vector3.one)
+		end) ~= nil, "failures are not cached")
+
+		t.ok(Fx.preload())
+		builds = assets.builds
+		local handle = Fx.play(rings, CFrame.new())
+		t.eq(named("Halo").ClassName, "MeshPart")
+		t.eq(named("Spike").ClassName, "MeshPart")
+		t.eq(assets.builds, builds, "preloaded shapes are cloned, not rebuilt")
+		handle:stop()
+	end)
+
+	local long = Fx.define({ name = "Long", layers = { { kind = "event", at = 15, name = "late" } } })
+
+	t.test("overlapping freezes resume the scale from before the first; a watchdog ends stuck effects", function()
+		local before = Fx.live()
+		local handle = Fx.play(long, CFrame.new(), { timeScale = 0.5 })
+		handle:freeze(0.1)
+		handle:freeze(0.3)
+		handle:setTimeScale(0.25) -- while frozen: applies when the freeze ends
+		task.wait(0.2)
+		Scheduler.advance(1)
+		t.eq(handle.time, 0, "the longer freeze still holds")
+		task.wait(0.2)
+		Scheduler.advance(1)
+		t.eq(handle.time, 0.25)
+		handle:freeze(1000)
+		task.wait(61)
+		t.ok(handle.finished, "watchdog stopped the frozen effect")
+		t.eq(Fx.live(), before)
+		Scheduler.advance(0)
+	end)
+
+	t.test("listeners attached after Fx.play see events at t = 0", function()
+		local before = Fx.live()
+		local handle = Fx.play(
+			Fx.define({ name = "Start", layers = { { kind = "event", at = 0, name = "start" } } }),
+			CFrame.new()
+		)
+		local fired = false
+		handle:on("start", function()
+			fired = true
+		end)
+		t.ok(not fired and not handle.finished, "nothing runs before the first frame")
+		Scheduler.advance(1 / 60)
+		t.ok(fired, "t = 0 event reached the listener")
+		t.ok(handle.finished)
+		t.eq(Fx.live(), before)
+		Scheduler.advance(0)
 	end)
 end

@@ -147,6 +147,9 @@ export type Handle = {
 - `Fx.key(t: number, fields: KeyFields?): MeshKey`
 - `Fx.define(def: Definition): Definition`
   Validates and returns a definition (errors name the bad layer).
+- `Fx.preload(): boolean`
+  Builds Geo's unit torus and shard now (yields) so the first effect using them doesn't stall.
+  Call once from a client startup script. Returns false when meshes can't be made here.
 - `Fx.setGlobalTimeScale(scale: number)`
   Global time scale for every playing effect and the shared scheduler (0 freezes a frame for review).
 - `Fx.live(): number`
@@ -410,6 +413,7 @@ export type PartOptions = {
   Builds a MeshPart in one call (yields).
 - `Geo.cached(key: string, fn: (Builder) -> (), opts: PartOptions?): MeshPart`
   A template MeshPart built once per key; Clone() it for each use (clones share the mesh data).
+  Yields on the first build; concurrent callers for the same key wait for that one build.
 - `Geo.unitTorus(thickness: number?): MeshPart`
   Unit shapes used by Fx mesh layers (size 1 along each axis after Fx scales them).
 - `Geo.unitShard(): MeshPart`

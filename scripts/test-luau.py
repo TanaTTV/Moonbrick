@@ -28,7 +28,7 @@ def bundle():
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
 
 
-CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Fx")
+CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Fx")
 
 
 def creative_modules() -> str:
@@ -36,7 +36,7 @@ def creative_modules() -> str:
     code = ""
     for name in CREATIVE:
         source = (ROOT / f"luau/lib/shared/{name}.luau").read_text(encoding="utf-8")
-        for other in CREATIVE + ("VFX", "Geo"):
+        for other in CREATIVE + ("VFX",):
             source = source.replace(f"require(script.Parent.{other})", f"modules.{other}")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ReplicatedStorage.Kit.{name} = '{name}'\n"
     return code

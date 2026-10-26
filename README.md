@@ -214,7 +214,7 @@ Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checke
 - [ ] **Safe Creator Store assets:** search and insert with quarantine, a backdoor scan and export to files
 - [ ] **Community kit library:** share and install reusable systems (shops, abilities, round loops) as kits
 - [ ] Design-review rubric, lighting presets, and the texture generator as a reusable tool
-- [ ] **v1.1:** real-device touch/gamepad, 2-player streaming and the remaining live DataStore scenarios ([waived for 1.0](acceptance/v1-stable/WAIVERS.md))
+- [ ] **v1.2:** real-device touch/gamepad, 2-player streaming and the remaining live DataStore scenarios ([waived for 1.0](acceptance/v1-stable/WAIVERS.md))
 - [x] Blender → Studio mesh, PBR and rig import, with the exact importer settings documented
 - [x] API card and checked recipes in every project
 - [x] Creative engine (Fx, Motion, Pose, Audio, Tex, Geo) and creative brief (V1.1)

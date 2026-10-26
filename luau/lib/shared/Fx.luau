@@ -131,6 +131,8 @@ local QUALITY_RANK: { [string]: number } = { Low = 1, Medium = 2, High = 3 }
 local QUALITY_COUNT: { [string]: number } = { Low = 0.35, Medium = 0.65, High = 1 }
 local MAX_EMIT = 400
 local MAX_SECONDS = 20
+-- Real seconds after which any effect is stopped, whatever its time scale or freezes (leak guard).
+local WATCHDOG_SECONDS = MAX_SECONDS * 3
 local POOL_SIZE = 4
 
 local defaultQuality: Quality? = nil
@@ -318,6 +320,8 @@ type Event = { at: number, run: () -> () }
 type Track = { from: number, seconds: number, step: (number) -> () }
 type Internal = Handle & {
 	_scale: number,
+	_resume: number,
+	_freezes: number,
 	_events: { Event },
 	_tracks: { Track },
 	_emitters: { ParticleEmitter },
@@ -348,7 +352,7 @@ function Handle.on(self: Internal, name: string, fn: () -> ()): Handle
 	return self
 end
 
-function Handle.setTimeScale(self: Internal, scale: number)
+local function applyScale(self: Internal, scale: number)
 	if self.finished then
 		return
 	end
@@ -359,13 +363,29 @@ function Handle.setTimeScale(self: Internal, scale: number)
 	end
 end
 
--- Hitstop: holds particles, meshes and lights for `seconds` of real time.
+function Handle.setTimeScale(self: Internal, scale: number)
+	if self._freezes > 0 then
+		self._resume = math.clamp(scale, 0, 4) -- applied when the freeze ends
+		return
+	end
+	applyScale(self, scale)
+end
+
+-- Hitstop: holds particles, meshes and lights for `seconds` of real time. Overlapping freezes last
+-- until the longest ends, then the scale from before the first one comes back.
 function Handle.freeze(self: Internal, seconds: number)
-	local resume = self._scale
-	Handle.setTimeScale(self, 0)
+	if self.finished then
+		return
+	end
+	if self._freezes == 0 then
+		self._resume = self._scale
+		applyScale(self, 0)
+	end
+	self._freezes += 1
 	task.delay(seconds, function()
-		if not self.finished then
-			Handle.setTimeScale(self, resume)
+		self._freezes -= 1
+		if self._freezes == 0 then
+			applyScale(self, self._resume)
 		end
 	end)
 end
@@ -451,6 +471,8 @@ local function newHandle(
 		finished = false,
 		root = root,
 		_scale = 1,
+		_resume = 1,
+		_freezes = 0,
 		_events = {},
 		_tracks = {},
 		_emitters = {},
@@ -465,6 +487,7 @@ local function newHandle(
 		_attached = {},
 	}, Handle) :: any
 	handles[self] = true
+	task.delay(WATCHDOG_SECONDS, Handle.stop, self)
 	return self
 end
 
@@ -482,15 +505,44 @@ end
 -- Building layers
 
 local GeoModule: any = nil
+local geoFailed: { [string]: boolean } = {}
 
-local function effectPart(name: string, shape: string?, material: string?): BasePart
-	local part: BasePart
-	if shape == "torus" or shape == "shard" then
-		-- Real rings and faceted shards (Geo builds each unit shape once per client and clones it).
+-- Geo's unit torus or shard template (yields on its first build), or nil when meshes can't be made
+-- (published games without "Allow Mesh & Image APIs", budget reached): callers fall back to parts.
+local function geoTemplate(shape: string): MeshPart?
+	if geoFailed[shape] then
+		return nil
+	end
+	local ok, result = pcall(function()
 		if not GeoModule then
 			GeoModule = require(script.Parent.Geo)
 		end
-		part = (if shape == "torus" then GeoModule.unitTorus() else GeoModule.unitShard()):Clone()
+		return if shape == "torus" then GeoModule.unitTorus() else GeoModule.unitShard()
+	end)
+	if not ok then
+		geoFailed[shape] = true
+		warn(`Fx: '{shape}' meshes unavailable, using plain parts: {result}`)
+		return nil
+	end
+	return result
+end
+
+-- Builds Geo's unit torus and shard now (yields) so the first effect using them doesn't stall.
+-- Call once from a client startup script. Returns false when meshes can't be made here.
+function Fx.preload(): boolean
+	geoFailed = {}
+	return geoTemplate("torus") ~= nil and geoTemplate("shard") ~= nil
+end
+
+-- A layer part and the shape it really has ("torus" falls back to "ring", "shard" to "wedge").
+local function effectPart(name: string, shape: string?, material: string?): (BasePart, string?)
+	local part: BasePart
+	local template = if shape == "torus" or shape == "shard" then geoTemplate(shape) else nil
+	if template then
+		-- Real rings and faceted shards (Geo builds each unit shape once per client and clones it).
+		part = template:Clone()
+	elseif shape == "torus" or shape == "shard" then
+		return effectPart(name, if shape == "torus" then "ring" else "wedge", material)
 	elseif shape == "wedge" then
 		part = Instance.new("WedgePart")
 	else
@@ -507,7 +559,7 @@ local function effectPart(name: string, shape: string?, material: string?): Base
 	part.Material = (Enum.Material :: any)[material or "Neon"] or Enum.Material.Neon
 	part.Transparency = 1
 	part.TopSurface, part.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
-	return part
+	return part, shape
 end
 
 local function scaledCFrame(cf: CFrame?, scale: number): CFrame
@@ -645,16 +697,24 @@ end
 
 local function buildMesh(ctx: Ctx, layer: Layer, index: number)
 	local keys = layer.keys :: { MeshKey }
-	local part = effectPart(layer.name or `L{index}Mesh`, layer.shape, layer.material)
+	local part, shape = effectPart(layer.name or `L{index}Mesh`, layer.shape, layer.material)
 	local base = scaledCFrame(layer.offset, ctx.scale)
-	if layer.shape == "ring" or layer.shape == "cylinder" then
+	if shape == "ring" or shape == "cylinder" then
 		base *= CFrame.Angles(0, 0, math.rad(90)) -- lie flat: the cylinder axis points up
 	end
 	part.Parent = ctx.root
+	local function size(value: (number | Vector3)?): Vector3
+		local v = sizeOf(value, layer.shape, ctx.scale)
+		if layer.shape == "torus" and shape == "ring" then
+			-- Torus fallback disc: its thickness (Y) runs along the cylinder axis, laid flat above.
+			v = Vector3.new(math.max(v.Y, 0.05), v.X, v.Z)
+		end
+		return v
+	end
 	-- Resolve each key once, filling unspecified fields from the previous key.
 	local resolved = {}
 	local last = {
-		size = sizeOf(1, layer.shape, ctx.scale),
+		size = size(1),
 		transparency = 0,
 		color = resolveColor(layer.color or "glow", ctx.palette),
 		offset = CFrame.identity,
@@ -663,7 +723,7 @@ local function buildMesh(ctx: Ctx, layer: Layer, index: number)
 		local entry = {
 			t = key.t,
 			ease = key.ease,
-			size = if key.size ~= nil then sizeOf(key.size, layer.shape, ctx.scale) else last.size,
+			size = if key.size ~= nil then size(key.size) else last.size,
 			transparency = if key.transparency ~= nil then key.transparency else last.transparency,
 			color = if key.color ~= nil then resolveColor(key.color, ctx.palette) else last.color,
 			offset = if key.offset ~= nil then scaledCFrame(key.offset, ctx.scale) else last.offset,
@@ -889,7 +949,7 @@ local live = 0
 function Fx.setGlobalTimeScale(scale: number)
 	Scheduler.setTimeScale(scale)
 	for handle in handles do
-		Handle.setTimeScale(handle, handle._scale)
+		applyScale(handle, handle._scale)
 	end
 end
 
@@ -940,27 +1000,36 @@ function Fx.play(def: Definition, origin: CFrame | BasePart | Attachment, opts: 
 	end
 	local ctx: Ctx =
 		{ handle = handle, root = root, anchor = anchor, scale = scale, palette = palette, quality = quality, opts = o }
-	for index, layer in def.layers do
-		if Fx.allowed(layer, quality) then
-			local kind = layer.kind
-			if kind == "particles" then
-				buildParticles(ctx, layer, index)
-			elseif kind == "mesh" then
-				buildMesh(ctx, layer, index)
-			elseif kind == "beam" then
-				buildBeam(ctx, layer, index)
-			elseif kind == "light" then
-				buildLight(ctx, layer, index)
-			elseif kind == "sound" then
-				buildSound(ctx, layer)
-			elseif kind == "camera" then
-				buildCamera(ctx, layer)
-			elseif kind == "debris" then
-				buildDebris(ctx, layer)
-			elseif kind == "event" then
-				buildEvent(ctx, layer)
+	-- A layer that fails to build (or a yielding build that errors) must not leak the effect.
+	local built, err = pcall(function()
+		for index, layer in def.layers do
+			if Fx.allowed(layer, quality) then
+				local kind = layer.kind
+				if kind == "particles" then
+					buildParticles(ctx, layer, index)
+				elseif kind == "mesh" then
+					buildMesh(ctx, layer, index)
+				elseif kind == "beam" then
+					buildBeam(ctx, layer, index)
+				elseif kind == "light" then
+					buildLight(ctx, layer, index)
+				elseif kind == "sound" then
+					buildSound(ctx, layer)
+				elseif kind == "camera" then
+					buildCamera(ctx, layer)
+				elseif kind == "debris" then
+					buildDebris(ctx, layer)
+				elseif kind == "event" then
+					buildEvent(ctx, layer)
+				end
 			end
 		end
+	end)
+	if not built then
+		handle.finished = true
+		handles[handle] = nil
+		release(root)
+		error(err, 0)
 	end
 	if def.duration then
 		handle._ending = def.duration
@@ -971,7 +1040,7 @@ function Fx.play(def: Definition, origin: CFrame | BasePart | Attachment, opts: 
 	handle._stopJob = Scheduler.every(function(dt)
 		return step(handle, dt)
 	end)
-	step(handle, 0)
+	-- The first step runs on the next frame (like Pose), so :on() listeners see events at t = 0.
 	return handle
 end
 

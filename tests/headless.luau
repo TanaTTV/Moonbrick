@@ -23,6 +23,15 @@ end
 function task.spawn(fn, ...)
 	resume(coroutine.create(fn), ...)
 end
+function task.delay(delay, fn, ...)
+	local args = table.pack(...)
+	table.insert(queue, {
+		thread = coroutine.create(function()
+			fn(table.unpack(args, 1, args.n))
+		end),
+		at = now + delay,
+	})
+end
 local sequence = 0
 local services = {
 	DataStoreService = {},
@@ -63,19 +72,25 @@ local game = {
 		return services[name]
 	end,
 }
-local Instance = {
+-- Instances are property bags; only the classes below exist, so other classes fail like a broken build.
+local CLASSES = { Folder = true, Part = true, Model = true, WedgePart = true, MeshPart = true }
+local created = {}
+local Instance
+Instance = {
 	new = function(className)
 		if className == "BindableEvent" then
 			return { Event = {} }
 		end
-		assert(className == "Folder" or className == "Part", "headless runner does not implement " .. className)
-		return {
+		assert(CLASSES[className], "headless runner does not implement " .. className)
+		local inst = {
 			_type = "Instance",
+			ClassName = className,
 			GetFullName = function()
 				return className
 			end,
 			IsA = function(_, requested)
-				return requested == className or (className == "Part" and requested == "BasePart")
+				return requested == className
+					or (requested == "BasePart" and className ~= "Folder" and className ~= "Model")
 			end,
 			IsDescendantOf = function(self, ancestor)
 				local parent = self.Parent
@@ -87,22 +102,182 @@ local Instance = {
 				end
 				return false
 			end,
+			Clone = function(self)
+				local copy = table.clone(self)
+				copy.Parent, copy.destroyed = nil, nil
+				table.insert(created, copy)
+				return copy
+			end,
 			Destroy = function(self)
 				self.Parent = nil
+				self.destroyed = true
 			end,
 		}
+		table.insert(created, inst)
+		return inst
 	end,
 }
-local Vector3 = {
-	new = function(x, y, z)
-		return { _type = "Vector3", X = x, Y = y, Z = z, Magnitude = math.sqrt(x * x + y * y + z * z) }
+-- Values: translation-only CFrames and componentwise vectors, enough for layout maths, not rotation.
+local Vector3 = {}
+local vectorMeta = {}
+function Vector3.new(x, y, z)
+	x, y, z = x or 0, y or 0, z or 0
+	return setmetatable(
+		{ _type = "Vector3", X = x, Y = y, Z = z, Magnitude = math.sqrt(x * x + y * y + z * z) },
+		vectorMeta
+	)
+end
+local function lift(v)
+	return if type(v) == "number" then Vector3.new(v, v, v) else v
+end
+vectorMeta.__index = {
+	Min = function(a, b)
+		return Vector3.new(math.min(a.X, b.X), math.min(a.Y, b.Y), math.min(a.Z, b.Z))
+	end,
+	Max = function(a, b)
+		return Vector3.new(math.max(a.X, b.X), math.max(a.Y, b.Y), math.max(a.Z, b.Z))
+	end,
+	Lerp = function(a, b, t)
+		return a + (b - a) * t
 	end,
 }
-local Color3 = {
-	fromRGB = function(r, g, b)
-		return { _type = "Color3", R = r / 255, G = g / 255, B = b / 255 }
+vectorMeta.__add = function(a, b)
+	return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
+end
+vectorMeta.__sub = function(a, b)
+	return Vector3.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
+end
+vectorMeta.__mul = function(a, b)
+	a, b = lift(a), lift(b)
+	return Vector3.new(a.X * b.X, a.Y * b.Y, a.Z * b.Z)
+end
+vectorMeta.__div = function(a, b)
+	b = lift(b)
+	return Vector3.new(a.X / b.X, a.Y / b.Y, a.Z / b.Z)
+end
+vectorMeta.__unm = function(a)
+	return Vector3.new(-a.X, -a.Y, -a.Z)
+end
+Vector3.zero, Vector3.one = Vector3.new(0, 0, 0), Vector3.new(1, 1, 1)
+Vector3.xAxis, Vector3.yAxis, Vector3.zAxis = Vector3.new(1, 0, 0), Vector3.new(0, 1, 0), Vector3.new(0, 0, 1)
+local Vector2 = {
+	new = function(x, y)
+		return { _type = "Vector2", X = x or 0, Y = y or 0 }
 	end,
 }
+local CFrame = {}
+local frameMeta = {}
+function CFrame.new(position)
+	local cf = setmetatable({ _type = "CFrame", Position = position or Vector3.zero }, frameMeta)
+	cf.Rotation = cf
+	return cf
+end
+frameMeta.__index = {
+	Lerp = function(a, b, t)
+		return CFrame.new(a.Position:Lerp(b.Position, t))
+	end,
+}
+frameMeta.__mul = function(a, b)
+	if b._type == "Vector3" then
+		return a.Position + b
+	end
+	return CFrame.new(a.Position + b.Position)
+end
+CFrame.identity = CFrame.new()
+function CFrame.Angles()
+	return CFrame.identity
+end
+function CFrame.fromAxisAngle()
+	return CFrame.identity
+end
+local colorMeta = {}
+local Color3 = {}
+function Color3.new(r, g, b)
+	return setmetatable({ _type = "Color3", R = r, G = g, B = b }, colorMeta)
+end
+function Color3.fromRGB(r, g, b)
+	return Color3.new(r / 255, g / 255, b / 255)
+end
+colorMeta.__index = {
+	Lerp = function(a, b, t)
+		return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
+	end,
+}
+-- Enum.X.Y is the string "X.Y".
+local Enum = setmetatable({}, {
+	__index = function(_, kind)
+		return setmetatable({}, {
+			__index = function(_, item)
+				return kind .. "." .. item
+			end,
+		})
+	end,
+})
+local Content = {
+	fromObject = function(object)
+		return object
+	end,
+}
+-- EditableMesh stand-ins: async calls yield like the engine; `denied` mimics a game without
+-- "Allow Mesh & Image APIs".
+local assets = { denied = false, builds = 0 }
+local function editableMesh()
+	local positions, faces = {}, {}
+	local mesh = {}
+	function mesh:AddVertex(p)
+		table.insert(positions, p)
+		return #positions
+	end
+	function mesh:GetPosition(id)
+		return positions[id]
+	end
+	function mesh:SetPosition(id, p)
+		positions[id] = p
+	end
+	function mesh:GetVertices()
+		local ids = {}
+		for id in positions do
+			table.insert(ids, id)
+		end
+		return ids
+	end
+	function mesh:AddTriangle(a, b, c)
+		table.insert(faces, { a, b, c })
+		return #faces
+	end
+	function mesh:GetFaces()
+		local ids = {}
+		for id in faces do
+			table.insert(ids, id)
+		end
+		return ids
+	end
+	function mesh:GetFaceVertices(face)
+		return faces[face]
+	end
+	function mesh:AddColor()
+		return 1
+	end
+	function mesh:SetFaceColors() end
+	function mesh:Destroy() end
+	return mesh
+end
+function assets:CreateEditableMesh()
+	if self.denied then
+		error("EditableMesh APIs are not enabled for this experience")
+	end
+	return editableMesh()
+end
+function assets:CreateEditableMeshAsync()
+	task.wait(0.05)
+	return editableMesh()
+end
+function assets:CreateMeshPartAsync()
+	task.wait(0.05)
+	self.builds += 1
+	return Instance.new("MeshPart")
+end
+services.AssetService = assets
 local function typeof(value)
 	return type(value) == "table" and value._type or type(value)
 end
@@ -160,6 +335,8 @@ services.Players.PlayerRemoving = event()
 local passed, failed = 0, 0
 local t = {}
 t.loadNet = loadNet
+-- Engine stand-ins for creative specs that only run headless.
+t.fixtures = { instances = created, assets = assets }
 function t.eq(actual, expected, msg)
 	assert(actual == expected, (msg or "") .. " expected " .. tostring(expected) .. ", got " .. tostring(actual))
 end
