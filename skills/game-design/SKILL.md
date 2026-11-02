@@ -1,6 +1,6 @@
 ---
 name: game-design
-description: Roblox game design and creative direction — the creative brief (references, hybrid genres, art direction), design docs, core loops, game feel ("juice"), first-time player experience, mobile/console/PC support, screenshot-based visual review, and fair monetization. Use when planning a game or feature, when the user asks for a look, style or vibe, when they share reference images, when they ask to make something feel better, look better, or be more fun, and before calling a player-facing feature done.
+description: Roblox game design and creative direction: briefs, art style, core loops, progression, difficulty, game feel, UI layout, first-time experience, fair monetization. Use for "plan a game", "give it a style", "make it more fun", "make it feel better", shared reference images, and before calling a player-facing feature done.
 ---
 
 # Game design
@@ -44,6 +44,8 @@ or sharp and angular), and motion with anticipation → impact → follow-throug
 For effects, animation, procedural props and themed UI, read `tools/KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
 Tex, Geo).
 
+Maps and levels: follow `moonbrick:level-design`. Effects: follow `moonbrick:vfx`.
+
 ## 4. Game feel checklist (every player-facing action)
 - **Anticipation → action → impact → follow-through.** The peak stacks 3+ channels: visual, screen
   (shake/flash/FOV), UI (number pop) and sound. Hitstop (`handle:freeze`) sells weight.
@@ -67,12 +69,31 @@ Numbers prove logic; only images prove looks. Capture 1–3 stills at the key mo
 - **Direction match:** palette roles, shape language and type from the art direction, not defaults (§3).
 - **Contrast:** text readable on both bright and dark backgrounds.
 - **Clutter:** remove anything that doesn't serve the moment.
-Name the **top 3 weaknesses**, fix them, recapture, and repeat until a round finds nothing important
-(the plateau). Stills can't prove timing or motion: say so and ask the user to watch it play.
+Name the **top 3 weaknesses**, fix them, recapture. Stop after 3 rounds, or sooner if a round finds nothing
+important. Stills can't prove timing or motion: say so and ask the user to watch it play.
 
-## 8. Retention and monetization (fair and policy-safe)
+## 8. Progression and difficulty
+Write these numbers into `docs/design.md`; they decide more than any single feature.
+- **Reward timing:** first reward under 30 s, then gaps that roughly double: 30 s, 1 min, 2 min, 4 min, to a
+  5-10 minute rhythm. A new long goal should appear before the last one is finished, so there's never a
+  moment with nothing to want.
+- **Costs:** each tier 1.5x to 2x the last. Under 1.3x feels like nothing changed; over 3x reads as a wall.
+  Income should rise with it, so a tier takes a bit longer than the last, not ten times longer. Simulate the
+  first hour in a spec: list price, income and time for each tier, and look for flat stretches and spikes.
+- **Show the next thing:** the next upgrade, area or rank is always visible, with its price and a progress bar.
+- **Difficulty is a sawtooth, not a ramp:** 3 to 4 steps up, then an easy stretch with a reward. Relief is
+  what makes the next climb feel earned.
+- **One new thing at a time:** teach a mechanic safely, test it, then combine it. Never raise difficulty and
+  add a mechanic in the same step.
+- **Fair failure:** a new obstacle should take 1-3 tries early on, 3-8 later. If a playtest takes more, players
+  are guessing; ease the step or teach it better. Fast retry beats a lower difficulty.
+- **Stuck players:** give a route round any hard gate (skip, alternate path, pity reward). Never gate the core
+  loop behind paying.
+- **Session ends:** finish on a nearly complete goal, not a clean stop.
+
+## 9. Retention and monetization (fair and policy-safe)
 Progression, collection, daily goals and social play bring players back. Sell convenience and cosmetics,
 never power. Show odds before any paid random item. Players may be children, so keep it honest.
 
-## 9. When the user gives feedback
+## 10. When the user gives feedback
 Record **why** in `docs/design.md` ("What works" / "Avoid") so future features match their taste.
