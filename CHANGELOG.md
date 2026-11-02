@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
-- **Removed the demo games** (Crystal Rush, Element Brawl), `scripts/create-example.py` and their CI build to keep the plugin lean. The libraries, recipes and template are unchanged.
+## 1.0.1 (2026-11-01)
+**Behaviour change:** live player data that can no longer be saved (NaN, invalid UTF-8, mixed keys) now kicks the player by default, keeping the last good save. Set `onSaveInvalid` to handle it yourself.
+- **Removed the demo games** (Crystal Rush, Element Brawl), `scripts/create-example.py` and their CI build to keep the plugin lean. The recipes and template are unchanged.
 - **PlayerData:** `PlayerData.loaded` listeners now get the live data table (it was a BindableEvent, which passed a copy, so changes made in a listener were never saved); it supports `Connect`, `Once` and `Wait`. Live data that becomes unsaveable (NaN, invalid UTF-8, mixed keys) no longer fails every autosave silently until the player leaves: the player is kicked by default, keeping the last good save, or `onSaveInvalid` is called.
 - **Rojo startup:** the Windows ownership check no longer depends on English `netstat` text; Linux without `lsof` falls back to `/proc`; a failed launch stops its own Rojo instead of leaving it holding the port, which blocked every later session.
 - **Setup and CI:** Roblox type definitions are pinned to the luau-lsp 1.70.1 commit with a SHA256 check; `new-project.sh` commits before tool setup and works without a git identity; `python.sh` enforces Python 3.10+. CI uses current, SHA-pinned actions with Dependabot, also validates the plugin on the latest Claude Code (non-blocking) and runs host tests on Python 3.10.
