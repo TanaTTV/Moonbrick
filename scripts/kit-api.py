@@ -30,7 +30,7 @@ CREATIVE_MODULES = [
     ("luau/lib/shared/Pose.luau", "client (Transform does not replicate)", 'require(ReplicatedStorage.Kit.Pose)'),
     ("luau/lib/shared/Audio.luau", "both (client = local only)", 'require(ReplicatedStorage.Kit.Audio)'),
     ("luau/lib/shared/Tex.luau", "client", 'require(ReplicatedStorage.Kit.Tex)'),
-    ("luau/lib/shared/Geo.luau", "client or server (runtime meshes don't replicate)", 'require(ReplicatedStorage.Kit.Geo)'),
+    ("luau/lib/shared/Geo.luau", "client (server-made meshes don't render)", 'require(ReplicatedStorage.Kit.Geo)'),
     ("luau/lib/shared/Scheduler.luau", "both", 'require(ReplicatedStorage.Kit.Scheduler)'),
 ]
 CARDS = {
@@ -39,7 +39,7 @@ CARDS = {
 }
 # Classes whose methods are public even though they are not the module table.
 EXTRA_OWNERS = {"PlayerData": ("Session",)}
-FUNCTION = re.compile(r"^function (\w+)[.:](\w+)(\(.*)$")
+FUNCTION = re.compile(r"^function (\w+)[.:](\w+)((?:<[^>]*>)?\(.*)$")
 ASSIGN = re.compile(r"^(\w+)\.(\w+) = (.+)$")
 LOCAL_FUNCTION = re.compile(r"^local function (\w+)(<[^>]*>)?(\(.*)$")
 
@@ -59,7 +59,7 @@ def header(lines: list[str]) -> list[str]:
     return out
 
 
-def doc_above(lines: list[str], index: int, limit: int = 3) -> list[str]:
+def doc_above(lines: list[str], index: int, limit: int = 5) -> list[str]:
     docs = []
     i = index - 1
     while i >= 0 and lines[i].startswith("--") and not lines[i].startswith("--!"):
@@ -72,14 +72,22 @@ def doc_above(lines: list[str], index: int, limit: int = 3) -> list[str]:
 
 
 def block(lines: list[str], start: int) -> list[str]:
-    """Return a declaration starting at `start`, through its balanced brackets."""
+    """Return a declaration starting at `start`, through its balanced brackets and union lines."""
     depth, out = 0, []
-    for line in lines[start:]:
+    for i, line in enumerate(lines[start:], start):
         out.append(line.rstrip())
         depth += line.count("{") + line.count("(") - line.count("}") - line.count(")")
-        if depth <= 0:
+        ahead = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if depth <= 0 and not line.rstrip().endswith("=") and not ahead.startswith("|"):
             break
     return out
+
+
+def compact_type(lines: list[str]) -> list[str]:
+    """One-line a multi-line union so a type name's values read at a glance."""
+    if all("{" not in line for line in lines) and len(lines) > 1:
+        return [" ".join(line.strip() for line in lines)]
+    return lines
 
 
 def signature(lines: list[str], index: int, start: str) -> str:
@@ -109,7 +117,8 @@ def card_for(rel: str, side: str, require: str) -> list[str]:
             if "setmetatable(" in decl[0]:
                 types.append(decl[0].split("=")[0].strip() + " = <object; methods listed below>")
             else:
-                types.extend(decl)
+                types.extend(f"-- {text}" for text in doc_above(lines, i) if text)
+                types.extend(compact_type(decl))
         match = FUNCTION.match(line)
         if match and match.group(1) in owners:
             owner, method, sig = match.groups()
@@ -126,7 +135,7 @@ def card_for(rel: str, side: str, require: str) -> list[str]:
             elif value.endswith("{"):
                 keys = []
                 for inner in block(lines, i)[1:-1]:
-                    key = re.match(r"\s*(\w+)\s*=", inner)
+                    key = re.match(r"\s*(\w+)\s*=", inner) or re.match(r'\s*"([^"]+)",?\s*$', inner)
                     if key:
                         keys.append(key.group(1))
                 api.append((f"{owner}.{field} = {{ {', '.join(keys)} }}", doc_above(lines, i)))

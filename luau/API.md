@@ -112,7 +112,8 @@ export type Options = {
 - `VFX.flash(opts: Options?)`
   Full-screen flash that fades out.
 - `VFX.fovPunch(amount: number, time: number?)`
-  Kick the field of view out by `amount` degrees and ease it back.
+  Kick the field of view out by `amount` degrees and ease it back. Overlapping punches share the base
+  from before the first; only the newest one's end clears it.
 - `VFX.grade(opts: GradeOptions?)`
   Temporary colour-grade + bloom spike that settles back to normal.
 - `VFX.title(text: string, opts: Options?)`

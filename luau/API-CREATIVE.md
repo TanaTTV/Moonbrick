@@ -29,6 +29,7 @@ Use this card for exact signatures. Open the Kit source only when the card is no
 
 ```lua
 export type Quality = "Low" | "Medium" | "High"
+-- A colour, a palette role, a ColorSequence, or a list of colours/roles spread evenly over the lifetime.
 export type ColorSpec = Color3 | string | ColorSequence | { Color3 | string }
 export type NumberKeys = number | { any } -- constant, or { {t, value, envelope?}, ... } over normalised life
 export type MeshKey = {
@@ -64,7 +65,7 @@ export type Layer = {
 	rotation: { number }?,
 	rotSpeed: { number }?,
 	zOffset: number?,
-	shape: string?,
+	shape: string?, -- mesh: ball, block, cylinder, ring, torus, shard, wedge. Particles: Box, Sphere, Cylinder, Disc
 	shapeSize: (number | Vector3)?,
 	direction: Vector3?,
 	orientation: string?,
@@ -170,6 +171,9 @@ export type Handle = {
 > local s = Motion.spring(0, { speed = 12, damping = 0.6 }) ; s.target = 1 -- s.value follows
 
 ```lua
+-- Easing names: linear, quadIn, quadOut, quadInOut, cubicOut, expoIn, expoOut, backIn, backOut,
+-- elasticOut, sineInOut, anticipate. Typed as string so data tables stay easy to write; `Motion.isEase`
+-- checks a name.
 export type Ease = string
 export type Key<T> = { t: number, v: T, ease: Ease? }
 export type Spring = { value: number, velocity: number, target: number, speed: number, damping: number }
@@ -179,12 +183,18 @@ export type TweenOptions = { time: number?, ease: Ease?, delay: number?, onDone:
 - `Motion.isEase(name: string): boolean`
 - `Motion.ease(name: Ease?, x: number): number`
   Eased progress for `x` in 0..1 (clamped). Unknown names fall back to linear.
+- `Motion.sample<T>(keys: { Key<T> }, t: number): T`
+  Value of a keyframe track at time `t`; each key's `ease` shapes the segment that ends at it.
+- `Motion.length<T>(keys: { Key<T> }): number`
+  Length of a key track in seconds.
 - `Motion.springStep(s: Spring, dt: number)`
   Advances a damped spring by `dt` (semi-implicit Euler, sub-stepped for stability).
 - `Motion.spring(initial: number, opts: { speed: number?, damping: number? }?): Spring & { stop: () -> () }`
   A spring driven by the shared scheduler until `stop` is called. Read `value`, set `target`.
 - `Motion.to(inst: Instance, props: { [string]: any }, opts: TweenOptions?): () -> ()`
   Tweens properties of `inst` on the shared scheduler. Returns a cancel function.
+- `Motion.keys<T>(inst: Instance, property: string, keys: { Key<T> }, opts: { onDone: (() -> ())? }?): () -> ()`
+  Plays a keyframe track on one property of `inst`. Returns a cancel function.
 
 ## Pose
 `local Pose = require(ReplicatedStorage.Kit.Pose)` — client (Transform does not replicate)
@@ -228,7 +238,7 @@ export type Track = {
 }
 ```
 
-- `Pose.R15 = {  }`
+- `Pose.R15 = { Root, Waist, Neck, LeftShoulder, LeftElbow, LeftWrist, RightShoulder, RightElbow, RightWrist, LeftHip, LeftKnee, LeftAnkle, RightHip, RightKnee, RightAnkle }`
 - `Pose.R6 = { "RootJoint", "Neck", "Left Shoulder", "Right Shoulder", "Left Hip", "Right Hip" }`
 - `Pose.classify(names: { string }): RigType`
   Rig type from a list of joint names (pure; tested).
@@ -291,8 +301,12 @@ export type Loop = { sound: Sound, stop: (fade: number?) -> () }
 - `Audio.cue(name: string): Cue?`
 - `Audio.pitchFor(cue: Cue, rand: number?): number`
   Picks a pitch from a cue's fixed value or { min, max } range; `rand` (0..1) is injectable for tests.
+- `Audio.lifetime(length: number, speed: number, delay: number?): number`
+  Seconds to keep a loaded one-shot before cleanup, when `Ended` never fires (pure; tested). Before
+  it loads a Sound reports TimeLength 0, so only call this once it has loaded.
 - `Audio.play(nameOrId: string, where: Where?, opts: PlayOptions?): Sound`
-  Plays a cue (or a raw sound id) once. Returns the Sound, which cleans itself up.
+  Plays a cue (or a raw sound id) once. Returns the Sound, which cleans itself up when it ends. A cue
+  with `looped = true` never ends: it plays until you destroy the Sound (prefer `Audio.loop`).
 - `Audio.loop(nameOrId: string, where: Where?, opts: { fade: number?, volume: number? }?): Loop`
   Starts a looping cue (ambience, music) with an optional fade-in. `stop(fade)` fades it out.
 
@@ -313,7 +327,7 @@ export type Loop = { sound: Sound, stop: (fade: number?) -> () }
 > Security → "Allow Mesh & Image APIs". `Tex.alpha` is the pure pixel function shared with fxtex.py.
 
 ```lua
-export type Name =
+export type Name = "glow" | "core" | "ring" | "spark" | "star" | "streak" | "smoke" | "dust" | "shard" | "crack" | "wisp"
 export type Options = {
 	size: number?, -- pixels per side (or per cell for flipbooks), default 128
 	seed: number?,
@@ -330,6 +344,8 @@ export type Options = {
   Uses uploaded texture files: { name = "rbxassetid://…" } (overrides preview and stock).
 - `Tex.usePreview(base: string?)`
   Uses the local Studio preview copied by `python scripts/fxtex.py preview` (this computer only).
+- `Tex.resetFiles()`
+  Forgets `useFiles` and `usePreview`: back to stock textures. (Tests and scene changes.)
 - `Tex.fileFor(name: string): (string, number?)`
   The file texture for a particle/beam/trail and whether it is a flipbook sheet (pure).
 - `Tex.Fallback = { glow, core, ring, spark, star, streak, smoke, dust, shard, crack, wisp }`
@@ -346,7 +362,7 @@ export type Options = {
   Drops cached textures (call when leaving a scene that used many).
 
 ## Geo
-`local Geo = require(ReplicatedStorage.Kit.Geo)` — client or server (runtime meshes don't replicate)
+`local Geo = require(ReplicatedStorage.Kit.Geo)` — client (server-made meshes don't render)
 
 > Geo: procedural meshes from Luau (EditableMesh → MeshPart), for props, architecture and effect shapes
 > that parts can't make (rings, domes, lathed vases, tubes, extruded silhouettes). No Blender, no upload.
@@ -362,7 +378,7 @@ export type Options = {
 > facets. Runtime meshes don't save with the place and DON'T render when made on the server (verified in
 > Studio 0.743: clients see a "missing mesh" checker). Build them on clients: for world props, put
 > ordinary parts ("spots") with a `GeoShape` attribute in the world (they save, collide and replicate)
-> and call `Geo.dress(workspace)` from a client script; each spot gets its mesh and turns invisible.
+> and call `Geo.watch(workspace)` from a client script; each spot gets its mesh and turns invisible.
 > Clients allow few live growable EditableMeshes (8 in Studio 0.743), so each build is baked into a
 > fixed-size copy (hundreds allowed) and the builder freed. Still prefer few distinct shapes and many
 > clones: clones share one mesh.
@@ -409,6 +425,9 @@ export type PartOptions = {
 - `Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart`
   Turns a builder into a MeshPart, centred on its bounds (yields). The builder can't be used afterwards. Model space stays world space:
   the part is placed where the mesh was built around the origin.
+- `Geo.free(part: MeshPart)`
+  Destroys a part from `Geo.build` and frees its mesh now. Only for parts that were never cloned: it
+  blanks clones. Plain `Destroy` is enough otherwise; the mesh then goes with its last clone.
 - `Geo.build(fn: (Builder) -> (), opts: PartOptions?): MeshPart`
   Builds a MeshPart in one call (yields).
 - `Geo.cached(key: string, fn: (Builder) -> (), opts: PartOptions?): MeshPart`
@@ -419,9 +438,21 @@ export type PartOptions = {
 - `Geo.unitShard(): MeshPart`
   A faceted crystal shard 1 stud wide and tall, pointing up (+Y), base at the bottom.
 - `Geo.register(name: string, build: (Builder, { [string]: any }) -> (), opts: { vertexColors: boolean? }?)`
+  Adds a shape `Geo.dress` and `Geo.watch` can build for spots with `GeoShape = name`. `build(b, params)`
+  makes it around the origin; the mesh is then stretched to the spot's size. `params` are the spot's
+  attributes. `vertexColors = true`: the shape paints itself (setColor/colorAt), else it takes the spot's Color.
+- `Geo.SpotTag = "GeoSpot"`
+  Tag for spots that gain a `GeoShape` after they are parented; `Geo.watch` picks these up too.
 - `Geo.dress(root: Instance): number`
   Client: gives every BasePart under `root` that has a `GeoShape` attribute its generated mesh, sized
-  to the part. The part stays as an invisible collision/hit proxy. Returns how many were dressed.
+  to the part. The part stays as an invisible collision/hit proxy, and a mesh copies the spot's
+  Transparency once, when dressed. Yields; returns how many were dressed. One pass over what exists now:
+  with streaming on, or for maps loaded later, use `Geo.watch`.
+- `Geo.watch(root: Instance): () -> ()`
+  Client: dresses `root` now and keeps dressing spots that appear under it later (streamed in, or
+  loaded with a map), also ones tagged `Geo.SpotTag`. Doesn't yield. Returns a function that stops
+  watching; dressed spots keep their meshes. A spot that streams out and back is a new instance, so it
+  is dressed again.
 
 ## Scheduler
 `local Scheduler = require(ReplicatedStorage.Kit.Scheduler)` — both
@@ -441,8 +472,12 @@ export type Phase = "Heartbeat" | "PreSimulation"
   Runs `step(dt)` every frame until it returns true or the returned function is called.
 - `Scheduler.setTimeScale(scale: number)`
   Global time scale for every job: 0 freezes Fx/Pose/Motion (frame captures), 0.2 is slow motion.
+- `Scheduler.onTimeScale(fn: (number) -> ())`
+  Calls `fn(scale)` after every time scale change (Fx uses it to hold its particle emitters).
 - `Scheduler.getTimeScale(): number`
 - `Scheduler.count(phase: Phase?): number`
   Number of live jobs (for tests and leak checks).
 - `Scheduler.advance(dt: number, phase: Phase?)`
-  Advances every job by `dt` without waiting for a frame. Deterministic tests and frame captures use this.
+  Advances jobs by `dt` without waiting for a frame (default: both phases, physics phase first), for
+  deterministic tests and frame captures. `dt` follows the time scale, except while frozen (scale 0),
+  when it applies as given: that is how a capture steps a frozen frame.

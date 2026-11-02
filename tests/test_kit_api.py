@@ -18,6 +18,7 @@ def load(name, rel):
 
 
 kit_api = load("kit_api", "scripts/kit-api.py")
+test_studio = load("test_studio", "scripts/test-studio.py")
 project = load("project", "scripts/project.py")
 
 
@@ -32,9 +33,21 @@ class KitApiTests(unittest.TestCase):
             for rel, _, _ in modules:
                 name = Path(rel).stem
                 for line in (ROOT / rel).read_text(encoding="utf-8").splitlines():
-                    match = re.match(rf"^function {name}[.:](\w+)\(", line)
+                    match = re.match(rf"^function {name}[.:](\w+)(?:<[^>]*>)?\(", line)
                     if match:
-                        self.assertIn(f"`{name}.{match.group(1)}(", card, card_path)
+                        self.assertRegex(card, rf"`{name}\.{match.group(1)}[(<]", card_path)
+
+    def test_cards_carry_what_the_source_comments_say(self):
+        card = (ROOT / "luau/API-CREATIVE.md").read_text(encoding="utf-8")
+        for needed in (
+            "`Motion.keys<T>(", "`Motion.sample<T>(", "`Motion.length<T>(",  # generics
+            "elasticOut", "sineInOut",  # the ease names above `export type Ease`
+            "ball, block, cylinder, ring, torus, shard, wedge",  # Fx shapes
+            "Adds a shape",  # the Geo.register explanation
+            "`Pose.R15 = { Root, Waist,",  # list values, not an empty table
+            'export type Name = "glow" | "core"',  # multi-line unions
+        ):
+            self.assertIn(needed, card)
 
     def test_cards_are_much_smaller_than_the_source(self):
         for card_path, (_, modules) in kit_api.CARDS.items():
@@ -44,6 +57,15 @@ class KitApiTests(unittest.TestCase):
     def test_core_card_stays_small(self):
         # The core card is read in every session; the creative modules live on their own card.
         self.assertLess((ROOT / "luau/API.md").stat().st_size, 16 * 1024)
+
+    def test_studio_bundle_inlines_every_module_a_spec_needs(self):
+        bundle = test_studio.bundle()
+        for name in sorted({*test_studio.SHARED, "PlayerData", "Round", "MCPKit"}):
+            self.assertIn(f"modules.{name} = (function()", bundle)
+        self.assertNotIn("require(script.Parent", bundle)
+        self.assertEqual(re.findall(r"t\.require\([^)]*\)", bundle), [], "a spec would load a real module")
+        order = [bundle.index(f"modules.{name} = (function()") for name in test_studio.SHARED]
+        self.assertEqual(order, sorted(order))
 
     def test_new_projects_get_the_card(self):
         with tempfile.TemporaryDirectory() as tmp:
