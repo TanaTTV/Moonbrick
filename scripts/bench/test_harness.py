@@ -456,6 +456,7 @@ class Launch(unittest.TestCase):
             with patch.object(run.os, 'name', 'nt'), patch.object(run.shutil, 'which', return_value=None), patch.object(run.Path, 'home', return_value=home):
                 self.assertEqual(run.claude_command(), [str(home / '.local/bin/claude.exe')])
 
+    @unittest.skipUnless(run.os.name == 'nt', 'pathlib cannot make Windows paths on other systems')
     def test_windows_refuses_a_bare_cmd_wrapper(self):
         with tempfile.TemporaryDirectory() as tmp:
             which = lambda name: str(Path(tmp) / 'claude.cmd') if name == 'claude.cmd' else None
