@@ -551,7 +551,9 @@ function K.tour(name: any, stops: any)
 		return name .. " done"
 	end
 	K.cam(stop.cf, nil, { fov = stop.fov })
-	RunService.RenderStepped:Wait()
+	if RunService:IsRunning() then
+		RunService.RenderStepped:Wait()
+	end
 	if stop.freeze then
 		K.freeze()
 		tour.froze = true
