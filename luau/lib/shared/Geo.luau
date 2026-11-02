@@ -52,6 +52,9 @@ export type Builder = {
 	count: (self: Builder) -> number,
 }
 
+-- A seeded random stream: `rng()` in 0..1, `rng(a, b)` between a and b.
+export type Random = (number?, number?) -> number
+
 type Internal = Builder & {
 	_positions: { [number]: Vector3 },
 	_order: { number },
@@ -61,6 +64,24 @@ type Internal = Builder & {
 }
 
 local MAX_FACES = 20000
+
+-- A seeded random stream (pure): the same seed gives the same numbers on every client and in tests.
+function Geo.rng(seed: number): Random
+	local state = (math.floor(math.abs(seed)) * 7919 + 104729) % 2147483646 + 1
+	local function nextValue(): number
+		state = state * 48271 % 2147483647
+		return (state - 1) / 2147483646
+	end
+	nextValue() -- nearby seeds start close together; one step spreads them
+	nextValue()
+	return function(a: number?, b: number?): number
+		local value = nextValue()
+		if a and b then
+			return a + (b - a) * value
+		end
+		return value
+	end
+end
 
 local BuilderMethods = {}
 BuilderMethods.__index = BuilderMethods

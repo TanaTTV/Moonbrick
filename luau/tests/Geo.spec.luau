@@ -8,6 +8,18 @@ return function(t: any)
 		return b
 	end
 
+	t.test("every built-in shape builds and faces outward on real meshes", function()
+		local GeoShapes = t.require(game:GetService("ReplicatedStorage").Kit.GeoShapes)
+		for name, build in GeoShapes.Builders do
+			local b = built(function(builder)
+				build(builder, { Seed = 2 })
+			end)
+			t.ok(b:volume() > 0, name .. " is inside-out")
+			t.ok(b:count() < 1500, name .. " is too heavy")
+			b.mesh:Destroy()
+		end
+	end)
+
 	t.test("every closed primitive faces outward (positive signed volume)", function()
 		local shapes: { [string]: (any) -> () } = {
 			lathe = function(b)
