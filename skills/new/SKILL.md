@@ -16,5 +16,10 @@ argument-hint: "[project name]"
    - Plugins tab → Rojo → **Connect**.
 6. When they confirm, verify in one call: `list_roblox_studios`, then `execute_luau` (Edit): `local K=require(game.ServerStorage.MCPKit) return K.tree("game.ReplicatedStorage", 2) .. "\n" .. K.tree("game.ServerScriptService", 2)` — expect `Kit` with `VFX/UI/Net` and `Kit` with `PlayerData/Cooldown/Round/Economy/DebugHooks/DevTools`.
 7. Wrap up with next steps:
-   - For best results, start Claude Code **inside the project folder** from now on (loads its `CLAUDE.md`; the session hook keeps Rojo running).
+   - Start Claude Code **inside the project folder** from now on (loads its `CLAUDE.md`; the session hook keeps Rojo running). If they carry on in this session instead, read `<dir>/CLAUDE.md` now and use `<dir>`-prefixed paths: its rules aren't loaded here and `tools/check.sh` won't resolve.
    - Offer to write `docs/design.md` together (game-design skill: a brief of at most 3 questions, recorded in `docs/design.md` and `assets/art.json`) before building features.
+
+## If setup fails
+Report the exact error first. A failed run can be resumed, so fix the cause (usually network or git) and **rerun the same `new-project.sh` command**. It keeps existing files and stops short of a second first commit.
+- `target must be absent, empty, or an unfinished Moonbrick scaffold`: the folder holds something else. Ask for another location. Never delete a folder to make room.
+- Rojo port or ownership messages: `${CLAUDE_PLUGIN_ROOT}/docs/TROUBLESHOOTING.md`.

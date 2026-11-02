@@ -35,7 +35,7 @@ Each round:
 3. Name the **top 3 weaknesses against `art.json`**: silhouette, value zones, proportion, material contrast, palette. "Looks unfinished" is not a weakness; "handle and blade share one value, so it reads as one blob at phone size" is.
 4. Fix those three, nothing else.
 
-Stop at round 3, or earlier if a round finds nothing that changes the read at game distance, and report what's still weak rather than polishing on. For a hero asset, pass the final angles to the `moonbrick:art-critic` agent, which didn't build it. Its findings go to the user; they don't start a fourth round unless the user asks.
+Stop at round 3, or earlier if a round finds nothing that changes the read at game distance, and report what's still weak rather than polishing on. For a hero asset, give the object name to the `moonbrick:art-critic` agent, which didn't build it and takes its own views. Its findings go to the user; they don't start a fourth round unless the user asks.
 
 ## Export
 
