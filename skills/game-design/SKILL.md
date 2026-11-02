@@ -29,8 +29,8 @@ artwork, and never commit someone else's image. The goal is the *principle*, exe
   genre ownership, palette roles, shape language, motion feel, UI shape, effect style, camera.
 - `assets/art.json` (start from a copy of `${CLAUDE_PLUGIN_ROOT}/assets/art.example.json`; a bare file fails validation) → `style` holds the machine-readable part: `palette`, `genres`, `references`,
   `ui` (`font`, `displayFont`, `corner`, `stroke`, `buttonFill`), `motion`. Validate it with
-  `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json` (an empty `assets` list is fine without Blender).
-- `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" theme assets/art.json --output src/shared/ArtStyle.luau` generates
+  `python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json` (an empty `assets` list is fine without Blender).
+- `python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" theme assets/art.json --output src/shared/ArtStyle.luau` generates
   `ArtStyle.apply()` (`UI.useTheme`) and `ArtStyle.palette` (Fx roles). Edit the manifest, not the output.
 
 ## 3. Calibrate away from AI defaults

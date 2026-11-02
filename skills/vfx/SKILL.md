@@ -46,9 +46,9 @@ Keep total additive coverage small: stacked additive particles at `count` 100 be
 `core` the hottest, nearly white version of the hue. `glow` the saturated identity colour. `accent` a complement, 10% of the area at most. `dark` and `smoke` the shadows and cooled matter, never pure grey unless the art direction says so. `spark` for flying bits. Effect colour should fall from hot to dark over life: `core` → `glow` → `smoke`. Pass the game's palette at play: `Fx.play(def, cf, { palette = ArtStyle.palette })`.
 
 ## 6. Textures
-First choice: built-ins. `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" render fx`, then `... fxtex.py preview fx`, then `Tex.usePreview()` in Studio. `... fxtex.py list` shows the names. Custom ones when the built-ins can't carry the look (a brand-shaped slash, stylised flame): draw white with alpha in Blender with `execute_blender_code` and render to PNG, or generate in Python.
+First choice: built-ins. `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" render fx`, then `... fxtex.py preview fx`, then `Tex.usePreview()` in Studio. `... fxtex.py list` shows the names. Custom ones when the built-ins can't carry the look (a brand-shaped slash, stylised flame): draw white with alpha in Blender with `execute_blender_code` and render to PNG, or generate in Python.
 
-Check every custom texture before use: `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/fxcheck.py" <file>`. Fix what it reports rather than arguing with it.
+Check every custom texture before use: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxcheck.py" <file>`. Fix what it reports rather than arguing with it.
 
 Rules it can't judge for you: white or near-white so `color` tints it; soft falloff for light and crisp edges for matter; the shape clear of the image edge; 1024 the largest side.
 

@@ -39,8 +39,8 @@ Stop at round 3, or earlier if a round finds nothing that changes the read at ga
 
 ## Export
 
-1. `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json`. Passing: one `Art manifest OK` line.
-2. Save, then `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" export assets/art.json --output assets/exports/<new-version> --blender <executable>`. Get the executable from `bpy.app.binary_path` if `blender` isn't on PATH. Use a new version folder every time; exports never overwrite.
+1. `python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json`. Passing: one `Art manifest OK` line.
+2. Save, then `python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" export assets/art.json --output assets/exports/<new-version> --blender <executable>`. Get the executable from `bpy.app.binary_path` if `blender` isn't on PATH. Use a new version folder every time; exports never overwrite.
 3. Passing: `Exported N FBX assets` and a `report.json`. That proves local file generation and budgets only, not how it looks in Studio. Over budget: fix the model. Don't raise a budget without telling the user.
 
 ## Import into Studio (manual, today)
