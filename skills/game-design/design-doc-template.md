@@ -14,7 +14,7 @@ How it should feel, in three words. The one moment that must feel amazing.
 
 ## Art direction
 Machine-readable parts live in `assets/art.json` → `style` (palette, genres, references, ui, motion);
-regenerate `src/shared/ArtStyle.luau` with `python KIT/scripts/assets.py theme assets/art.json --output src/shared/ArtStyle.luau`.
+regenerate `src/shared/ArtStyle.luau` after any change (`moonbrick:game-design` has the command).
 
 - **Genres:** base genre (owns the rules) + flavour genre (owns the look), and what each one owns.
 - **References:**

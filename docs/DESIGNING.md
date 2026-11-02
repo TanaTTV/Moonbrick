@@ -8,8 +8,8 @@ workflow, how to prompt, what the creative Kit can do, and where its limits are.
 1. **Brief.** Claude asks at most three questions (the moment that matters, references, mood or genre mix).
    If you'd rather not decide, it proposes three contrasting directions and you pick or mix.
 2. **Record.** The direction goes into `docs/design.md` (Art direction section) and `assets/art.json`
-   (`style`: palette, genres, references, UI tokens, motion). `python KIT/scripts/assets.py theme
-   assets/art.json --output src/shared/ArtStyle.luau` turns it into code (`UI.useTheme` + an `Fx`
+   (`style`: palette, genres, references, UI tokens, motion). The plugin's `assets.py theme` command
+   turns it into code (`UI.useTheme` + an `Fx`
    palette), so the look lives in one place.
 3. **Build** with the creative Kit (`tools/KIT_CREATIVE.md`): effects, motion, poses, audio, textures and
    procedural meshes, all driven by that palette.

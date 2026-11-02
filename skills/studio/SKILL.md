@@ -5,7 +5,7 @@ description: Fast, token-efficient way to work with Roblox Studio through the St
 
 # Working with Roblox Studio fast
 
-Optimize **fewer calls, shorter code and bounded output**. `docs/BENCHMARK-STUDIO-TREE.md` records a controlled tree benchmark: output shrank, but the compact call was slower. Do not infer universal latency or token-cost savings. Concurrent calls can run in parallel except in the Client datamodel; serialize dependent operations.
+Optimize **fewer calls, shorter code and bounded output**. `${CLAUDE_PLUGIN_ROOT}/docs/BENCHMARK-STUDIO-TREE.md` records a controlled tree benchmark: output shrank, but the compact call was slower. Do not infer universal latency or token-cost savings. Concurrent calls can run in parallel except in the Client datamodel; serialize dependent operations.
 
 ## Session start (2 calls max)
 1. `list_roblox_studios` once and `get_studio_state` before choosing Edit/Server/Client; reuse the ID and refresh state after a mode mismatch. Never stop another active playtest without authorization.
@@ -13,7 +13,7 @@ Optimize **fewer calls, shorter code and bounded output**. `docs/BENCHMARK-STUDI
    - Edit / Server: `local K=_G.K or require(game.ServerStorage.MCPKit)`
    - Client (playtest): `local K=_G.K or require(game.ReplicatedStorage:WaitForChild("MCPKit"))`
 
-In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. Otherwise, if `require` errors, read `luau/MCPKit.luau` from this plugin (two folders above this skill's base directory) and pass its full contents to `execute_luau` once per datamodel. Edit-mode `require` is cached across calls: after the kit file changes, refresh with `_G.K=require(game.ServerStorage.MCPKit:Clone())`.
+In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. Otherwise, if `require` errors, read `${CLAUDE_PLUGIN_ROOT}/luau/MCPKit.luau` and pass its full contents to `execute_luau` once per datamodel. Edit-mode `require` is cached across calls: after the kit file changes, refresh with `_G.K=require(game.ServerStorage.MCPKit:Clone())`.
 
 ## MCPKit (`K`)
 | Call | Returns |
@@ -58,7 +58,7 @@ Hooks bypass input, so UI that only reacts to its own clicks goes stale unnotice
 - **Edit-mode `require` caching:** modules keep their first-loaded code until Studio restarts. Run tests in a playtest (fresh VM), or require a `:Clone()`.
 - **Rojo templates** map Workspace/Lighting properties; never let a project file overwrite Studio's world.
 - **Particle flipbooks:** set `FlipbookLayout` *before* `FlipbookMode` (setting properties from a dictionary loop can do it in the wrong order); otherwise the emitter silently loops frame 1 at 1 fps.
-- **Looks need images, not part shapes.** Particle/beam textures come from files: `python KIT/scripts/fxtex.py preview <dir>` renders them and copies them into this PC's Studio content folder (`rbxasset://textures/moonbrick/*`, visible only here); `Tex.usePreview()` in Studio. Players see nothing until the owner uploads (`upload_image`, **one or two per call**; uploads land in their account, so ask first). Same for sounds with `scripts/sfx.py`.
+- **Looks need images, not part shapes.** Particle/beam textures come from files, in two steps: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" render fx`, then `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" preview fx` copies them into this PC's Studio content folder (`rbxasset://textures/moonbrick/*`, visible only here), then `Tex.usePreview()` in Studio. Players see stock textures until the files are uploaded and passed to `Tex.useFiles`. `upload_image` takes http(s) URLs, not file paths, so the usual route is the owner uploading the PNGs in Creator Hub; uploads land in their account, so ask first. Same steps for sounds with `python "${CLAUDE_PLUGIN_ROOT}/scripts/sfx.py"`.
 - **EditableImage/EditableMesh (Studio 0.743):** `ParticleEmitter`, `Beam` and `Trail` accept `TextureContent` but render nothing, so use file textures; ImageLabels and Decals render EditableImages. Meshes built on the **server** show a checker on clients: build them on clients (`Geo.dress`). A client allows only 8 live growable meshes, so `Geo` bakes each into a fixed-size copy (destroying a mesh blanks every MeshPart made from it). Faces render one side only: an open bowl needs an inner surface.
 - **Screenshot loop:** `screen_capture` times out when the display sleeps (nudge the mouse first). The default camera reclaims `CurrentCamera`: bind yours every frame at `Camera + 10` and hide your avatar with `LocalTransparencyModifier`. Freeze an effect exactly with `Fx.setGlobalTimeScale(0)`; turn latency makes "wait then capture" land at random times.
 - **MCP `require` cache is separate from the game's.** Requiring a module from `execute_luau` gives you a fresh copy with its own state: drive game state through DebugHooks, and only require pure or UI-only modules directly.

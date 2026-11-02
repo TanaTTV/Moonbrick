@@ -27,10 +27,10 @@ artwork, and never commit someone else's image. The goal is the *principle*, exe
 ## 2. Record it once
 - `docs/design.md` → "Art direction" section (template next to this file): references with take/avoid,
   genre ownership, palette roles, shape language, motion feel, UI shape, effect style, camera.
-- `assets/art.json` → `style` holds the machine-readable part: `palette`, `genres`, `references`,
+- `assets/art.json` (start from a copy of `${CLAUDE_PLUGIN_ROOT}/assets/art.example.json`; a bare file fails validation) → `style` holds the machine-readable part: `palette`, `genres`, `references`,
   `ui` (`font`, `displayFont`, `corner`, `stroke`, `buttonFill`), `motion`. Validate it with
-  `python KIT/scripts/assets.py validate assets/art.json` (an empty `assets` list is fine without Blender).
-- `python KIT/scripts/assets.py theme assets/art.json --output src/shared/ArtStyle.luau` generates
+  `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json` (an empty `assets` list is fine without Blender).
+- `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" theme assets/art.json --output src/shared/ArtStyle.luau` generates
   `ArtStyle.apply()` (`UI.useTheme`) and `ArtStyle.palette` (Fx roles). Edit the manifest, not the output.
 
 ## 3. Calibrate away from AI defaults
@@ -41,7 +41,7 @@ Untended output drifts to the same look. Choose each of these deliberately rathe
 - one hero colour used at full saturation everywhere (no value contrast, no focal point).
 Prefer one focal colour against restrained surroundings, a shape language that repeats (round and soft,
 or sharp and angular), and motion with anticipation → impact → follow-through.
-For effects, animation, procedural props and themed UI, read `KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
+For effects, animation, procedural props and themed UI, read `tools/KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
 Tex, Geo).
 
 ## 4. Game feel checklist (every player-facing action)
@@ -49,7 +49,7 @@ Tex, Geo).
   (shake/flash/FOV), UI (number pop) and sound. Hitstop (`handle:freeze`) sells weight.
 - **Escalation** on repeats; **feedback for everything**, including refusals ("Need 50 coins").
 - Small actions respond in < 0.15 s; big moments take 2–8 s and must be skippable or worth repeating.
-- You can't hear: synthesise placeholders (`scripts/sfx.py`) or leave named cues; the user approves audio.
+- You can't hear: synthesise placeholders (`python "${CLAUDE_PLUGIN_ROOT}/scripts/sfx.py" render <dir>`) or leave named cues; the user approves audio.
 
 ## 5. First-time experience (players decide in < 60 s)
 Goal and first interactable visible within 10 s; teach by doing; first reward < 30 s; first "wow"
