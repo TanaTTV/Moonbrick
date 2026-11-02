@@ -1,6 +1,6 @@
 ---
 name: game-design
-description: Roblox game design and creative direction: briefs, art style, core loops, progression, difficulty, game feel, UI layout, first-time experience, fair monetization. Use for "plan a game", "give it a style", "make it more fun", "make it feel better", shared reference images, and before calling a player-facing feature done.
+description: 'Roblox game design and creative direction: briefs, art style, core loops, progression, difficulty, game feel, UI layout, first-time experience, fair monetization. Use for "plan a game", "give it a style", "make it more fun", shared reference images, and before calling a player-facing feature done.'
 ---
 
 # Game design

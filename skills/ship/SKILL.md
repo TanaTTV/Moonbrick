@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Pre-publish checklist for a Roblox game: tests, audit, data safety, local-only assets, platforms, then a tagged release. Use for "publish my game", "ship it", "release an update", "is this ready to go live".
+description: 'Pre-publish checklist for a Roblox game: tests, audit, data safety, local-only assets, platforms, then a tagged release. Use for "publish my game", "ship it", "release an update", "is this ready to go live".'
 disable-model-invocation: true
 ---
 

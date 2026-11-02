@@ -1,6 +1,6 @@
 ---
 name: vfx
-description: Compose Roblox visual effects with Fx: explosions, slashes, fireballs, hits, spells, auras, pickups, beams, plus custom textures and flipbooks. Use for "make a fireball", "this hit feels weak", "add an explosion", "make the effect better", "draw a smoke texture".
+description: 'Compose Roblox visual effects with Fx: explosions, slashes, fireballs, hits, spells, auras, pickups, beams, plus custom textures and flipbooks. Use for "make a fireball", "this hit feels weak", "add an explosion", "make the effect better", "draw a smoke texture".'
 argument-hint: "[effect, or the moment it serves]"
 ---
 

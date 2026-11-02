@@ -1,6 +1,6 @@
 ---
 name: level-design
-description: Design and build Roblox maps and levels: layout from the core loop, blockout, scale, guiding players, pacing, dressing, phone limits, review tours. Use for "build a map", "make a level", "design the lobby", "add a new area", "this map feels empty", "players get lost".
+description: 'Design and build Roblox maps and levels: layout from the core loop, blockout, scale, guiding players, pacing, dressing, phone limits, review tours. Use for "build a map", "make a level", "design the lobby", "add a new area", "this map feels empty", "players get lost".'
 argument-hint: "[area, map or genre]"
 ---
 
