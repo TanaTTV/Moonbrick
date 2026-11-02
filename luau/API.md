@@ -44,8 +44,6 @@ export type RejectionStats = {
 - `Net.oneOf(...: any): Validator`
   One of a fixed set of values (e.g. item ids, enum-like strings).
 - `Net.optional(validator: Validator): Validator`
-- `Net.check(validators: { Validator }, args: { any }, count: number): (boolean, string?)`
-  Check an argument list against validators. Exposed for tests and custom remotes.
 - `Net.stats(): { [string]: RejectionStats }`
   Server-local lifetime counters; player identities are never exposed or retained after leave.
 - `Net.on(name: string, validators: { Validator }, handler: (Player, ...any) -> (), opts: Options?)`
@@ -129,6 +127,10 @@ export type Options = {
 > local panel = UI.panel({ parent = gui, size = UDim2.fromOffset(420, 300), title = "Shop" })
 > UI.button({ parent = panel, text = "BUY", onClick = function() ... end })
 > UI.show(panel, true)        UI.toast("Saved!")
+>
+> Layout helpers for whole screens: `UI.hud` gives a safe-area root, `UI.anchor` pins groups to its
+> edges, `UI.responsive` scales a design to any screen. `UI.bar`, `UI.tabs`, `UI.modal`, `UI.scroll` and
+> `UI.grid` build on those, and `UI.focus` gives gamepads a starting button.
 
 ```lua
 export type Style = "primary" | "secondary" | "danger" | "success"
@@ -164,6 +166,63 @@ export type PanelProps = {
 	padding: number?,
 	name: string?,
 }
+export type Corner = "topLeft" | "top" | "topRight" | "left" | "center" | "right" | "bottomLeft" | "bottom" | "bottomRight"
+export type AnchorProps = { parent: Instance, corner: Corner, size: UDim2?, margin: number?, name: string? }
+export type BarProps = {
+	parent: Instance?,
+	value: number?,
+	max: number?,
+	color: Color3?,
+	size: UDim2?,
+	position: UDim2?,
+	anchor: Vector2?,
+	label: boolean?, -- shows "value / max"
+	name: string?,
+}
+export type Bar = { frame: Frame, fill: Frame, value: number, max: number, set: (value: number, max: number?) -> () }
+export type ScrollProps = {
+	parent: Instance?,
+	size: UDim2?,
+	position: UDim2?,
+	anchor: Vector2?,
+	padding: number?, -- gap between items
+	name: string?,
+}
+export type GridProps = {
+	parent: Instance?,
+	columns: number?, -- fills the width with this many columns, default 3
+	cellHeight: number?, -- px, default 96
+	gap: number?, -- px, default 8
+	size: UDim2?,
+	position: UDim2?,
+	name: string?,
+}
+export type TabsProps = {
+	parent: Instance?,
+	tabs: { { id: string, text: string } },
+	selected: string?, -- default: the first tab
+	onSelect: ((string) -> ())?,
+	size: UDim2?,
+	position: UDim2?,
+	name: string?,
+}
+export type Tabs = {
+	frame: Frame,
+	pages: { [string]: Frame }, -- put each tab's content here
+	buttons: { [string]: TextButton },
+	selected: string,
+	select: (id: string) -> (),
+}
+export type ModalProps = {
+	title: string?,
+	text: string?,
+	size: UDim2?, -- default 50% by 40% of the screen, never below 320 by 200 px
+	buttons: { { text: string, style: Style?, onClick: (() -> ())? } }?, -- each closes the modal
+	onClose: (() -> ())?,
+	dismissable: boolean?, -- false: only the buttons close it; default true (gamepad B)
+	parent: Instance?, -- default its own top-level ScreenGui
+}
+export type Modal = { frame: Frame, panel: Frame, close: () -> () }
 ```
 
 - `UI.Theme = { primary, secondary, danger, success, background, surface, text, textOutline, font, corner, stroke, minTouchSize, buttonFill, buttonStroke, displayFont, panelStroke, panelTransparency, textStrokeWidth, labelStroke }`
@@ -180,6 +239,35 @@ export type PanelProps = {
   Show/hide with a pop animation. Cancel superseded animations before starting a new one.
 - `UI.toast(text: string, opts: { color: Color3?, duration: number? }?)`
   Short notification that stacks at the top of the screen and fades out.
+- `UI.anchorFor(edge: Corner, margin: number?): (UDim2, Vector2)`
+  Position and AnchorPoint that pin something to a screen edge, `margin` px in (pure).
+- `UI.viewScale(viewport: Vector2, design: Vector2?, min: number?, max: number?): number`
+  The scale that fits a design size on a viewport, clamped so text stays legible (pure).
+- `UI.barFill(value: number, max: number): number`
+  Fill of a bar in 0..1 (pure). A zero or negative maximum reads as empty.
+- `UI.gridCell(columns: number, height: number, gap: number?): UDim2`
+  Cell size for `columns` equal columns that fill their parent, with `gap` px between them (pure).
+- `UI.hud(name: string, displayOrder: number?): Frame`
+  A root frame inside the safe area, in the ScreenGui `name`: clear of the Roblox top bar (GuiService
+  insets), and of notches through the ScreenGui's insets. Children use scale; keeps up when insets change.
+- `UI.anchor(p: AnchorProps): Frame`
+  A transparent group pinned to an edge of the parent (usually `UI.hud`). Lay children out inside it.
+- `UI.responsive(gui: GuiObject, design: Vector2?, min: number?, max: number?): () -> ()`
+  Scales a frame designed at `design` px to fit the screen, now and on every resize. Returns a stop function.
+- `UI.focus(target: GuiObject): GuiObject?`
+  Puts gamepad focus on `target`, or on the first button under it, when a gamepad is in use. Returns
+  what it selected. Mouse and touch players see no change. UI.tabs and UI.modal do this for you.
+- `UI.bar(p: BarProps): Bar`
+  A meter (health, stamina, progress). `bar.set(value, max?)` eases to the new fill.
+- `UI.scroll(p: ScrollProps): ScrollingFrame`
+  A vertical list that scrolls when its children outgrow it (wheel, touch, thumbstick).
+- `UI.grid(p: GridProps): Frame`
+  An item grid; children fill its cells in order. Put it in `UI.scroll` for long inventories.
+- `UI.tabs(p: TabsProps): Tabs`
+  A row of tab buttons over swapping pages.
+- `UI.modal(p: ModalProps): Modal`
+  A centred dialog over a dimmed screen that blocks input behind it. Gamepads get the first button and
+  stay inside the dialog; closing returns focus to wherever it was. Default buttons: one OK.
 
 ## PlayerData
 `local PlayerData = require(ServerScriptService.Kit.PlayerData)` — server
@@ -222,19 +310,9 @@ export type Session = <object; methods listed below>
 export type Connection = { Connected: boolean, Disconnect: (self: Connection) -> () }
 ```
 
-- `PlayerData.deepCopy<T>(value: T, seen: { [any]: any }?): T`
-- `PlayerData.validate(value: any, ancestors: { [any]: boolean }?, depth: number?)`
-- `PlayerData.reconcile(data: { [any]: any }, template: { [any]: any }): { [any]: any }`
 - `PlayerData.sanitize(data: any, _reason: string?): { [string]: any }?`
 - `PlayerData.memoryStore(): Store & { values: { [string]: any } }`
   In-memory store with DataStore-like copy semantics. Used for tests and Studio without API access.
-- `PlayerData.Session = Session`
-- `Session.new(store: Store, key: string, template: { [string]: any }, opts: SessionOptions?): Session`
-- `Session.load(self: Session): (boolean, string?)`
-  Load and lock. Returns false + reason if the data is locked by a live server or the store keeps failing.
-- `Session.save(self: Session, release: boolean?): (boolean, string?)`
-  Write the data (refreshing the lock), or release the lock with `release = true`.
-  Returns false if another server has taken the lock (this session then stops saving).
 - `PlayerData.loaded = { Connect, Once, Wait }`
   Fires (player, data) when a player's data has loaded. `data` is the live table (a BindableEvent would
   pass a copy, so changes made in a listener would never be saved).

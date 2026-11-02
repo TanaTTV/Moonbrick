@@ -114,8 +114,14 @@ local services = {
 			self.bound[name] = fn
 		end,
 		UnbindFromRenderStep = function(self, name)
+			self.bound = self.bound or {}
 			self.bound[name] = nil
 		end,
+		RenderStepped = {
+			Wait = function()
+				task.wait()
+			end,
+		},
 	},
 	Players = {},
 	ServerScriptService = { Kit = { PlayerData = "PlayerData" } },
@@ -204,7 +210,7 @@ local instanceMeta = {}
 instanceMeta.__index = function(self, key)
 	if key == "Parent" then
 		return rawget(self, "_parent")
-	elseif key == "Position" then
+	elseif key == "Position" and PARTS[rawget(self, "ClassName")] then
 		local cf = rawget(self, "CFrame")
 		return cf and cf.Position
 	end
@@ -245,8 +251,6 @@ end
 instanceMeta.__newindex = function(self, key, value)
 	if key == "Parent" then
 		setParent(self, value)
-	elseif key == "Position" then
-		rawset(self, "CFrame", CFrame.new(value))
 	else
 		rawset(self, key, value)
 	end
@@ -513,14 +517,26 @@ local NumberRange = {
 }
 local function sequenceType(kind)
 	return {
-		new = function(...)
-			return { _type = kind, Value = { ... } }
+		new = function(a, b)
+			-- A number or colour (constant), two colours, or a keypoint list.
+			local keypoints = if type(a) == "table" and a._type == nil
+				then a
+				else { { Time = 0, Value = a }, { Time = 1, Value = b or a } }
+			return { _type = kind, Keypoints = keypoints }
 		end,
 	}
 end
 local NumberSequence, ColorSequence = sequenceType("NumberSequence"), sequenceType("ColorSequence")
-local NumberSequenceKeypoint, ColorSequenceKeypoint =
-	sequenceType("NumberSequenceKeypoint"), sequenceType("ColorSequenceKeypoint")
+local NumberSequenceKeypoint = {
+	new = function(time, value, envelope)
+		return { Time = time, Value = value, Envelope = envelope or 0 }
+	end,
+}
+local ColorSequenceKeypoint = {
+	new = function(time, value)
+		return { Time = time, Value = value }
+	end,
+}
 local TweenInfo = {
 	new = function(time)
 		return { Time = time }
@@ -755,10 +771,14 @@ services.GuiService = {
 		return signal()
 	end,
 }
-services.UserInputService = {
-	GamepadEnabled = false,
-	GetLastInputType = function()
-		return Enum.UserInputType.MouseMovement
+services.UserInputService = { GamepadEnabled = false, InputChanged = signal() }
+services.ContextActionService = {
+	bound = {},
+	BindAction = function(self, name, fn)
+		self.bound[name] = fn
+	end,
+	UnbindAction = function(self, name)
+		self.bound[name] = nil
 	end,
 }
 -- Starting a tween cancels the one running on that instance, like the engine does per property.

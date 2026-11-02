@@ -5,7 +5,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 # Load order: each module's requires must already be in `modules`. Fx loads VFX and Geo lazily.
-SHARED = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Net", "VFX", "Fx", "UI")
+SHARED = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Net", "VFX", "Fx", "UI", "Scene", "GeoShapes", "Scatter", "Camera")
 
 
 def bundle():

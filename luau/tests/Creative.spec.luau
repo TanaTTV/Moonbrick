@@ -348,7 +348,7 @@ return function(t: any)
 	end)
 
 	t.test("a failing pose stops itself and the next pose still plays", function()
-		local function rig(): any
+		local function rig(): (any, any)
 			local model = Instance.new("Model")
 			local joint = Instance.new("Motor6D")
 			joint.Name = "Waist"
@@ -431,9 +431,10 @@ return function(t: any)
 	t.test("a superseded fov punch keeps the base for the next one", function()
 		local VFX = t.require(Kit.VFX)
 		local runtime = t.fixtures.runtime
+		local world: any = workspace
 		local camera: any = Instance.new("Folder")
 		camera.FieldOfView = 70
-		workspace.CurrentCamera = camera
+		world.CurrentCamera = camera
 		runtime.client = true
 		VFX.fovPunch(10, 1)
 		task.wait(0.5)
@@ -446,7 +447,7 @@ return function(t: any)
 		t.eq(camera.FieldOfView, 70)
 		t.eq(camera:GetAttribute("VFXBaseFov"), nil)
 		runtime.client = false
-		workspace.CurrentCamera = nil
+		world.CurrentCamera = nil
 	end)
 
 	local function spot(shape: string): any

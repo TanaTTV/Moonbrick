@@ -32,9 +32,10 @@ class KitApiTests(unittest.TestCase):
             card = (ROOT / card_path).read_text(encoding="utf-8")
             for rel, _, _ in modules:
                 name = Path(rel).stem
+                internal = kit_api.INTERNAL.get(name, set())
                 for line in (ROOT / rel).read_text(encoding="utf-8").splitlines():
                     match = re.match(rf"^function {name}[.:](\w+)(?:<[^>]*>)?\(", line)
-                    if match:
+                    if match and match.group(1) not in internal:
                         self.assertRegex(card, rf"`{name}\.{match.group(1)}[(<]", card_path)
 
     def test_cards_carry_what_the_source_comments_say(self):
@@ -56,7 +57,7 @@ class KitApiTests(unittest.TestCase):
 
     def test_core_card_stays_small(self):
         # The core card is read in every session; the creative modules live on their own card.
-        self.assertLess((ROOT / "luau/API.md").stat().st_size, 16 * 1024)
+        self.assertLess((ROOT / "luau/API.md").stat().st_size, 19 * 1024)
 
     def test_studio_bundle_inlines_every_module_a_spec_needs(self):
         bundle = test_studio.bundle()
@@ -73,8 +74,10 @@ class KitApiTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 project.new_project(root, "card")
             self.assertEqual((root / "tools/KIT_API.md").read_bytes(), (ROOT / "luau/API.md").read_bytes())
+            for module in ("Scene", "GeoShapes", "Scatter", "Camera"):
+                self.assertTrue((root / f"src/kit/shared/{module}.luau").is_file(), module)
             self.assertEqual((root / "tools/KIT_CREATIVE.md").read_bytes(), (ROOT / "luau/API-CREATIVE.md").read_bytes())
-            for recipe in ("Data", "Pickups", "Ability", "Shop"):
+            for recipe in ("Data", "Pickups", "Ability", "Shop", "Checkpoints", "Zones", "Round", "Obby"):
                 self.assertTrue(any((root / "tools/recipes" / recipe).rglob("*.luau")), recipe)
 
 

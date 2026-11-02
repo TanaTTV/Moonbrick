@@ -32,13 +32,17 @@ CREATIVE_MODULES = [
     ("luau/lib/shared/Tex.luau", "client", 'require(ReplicatedStorage.Kit.Tex)'),
     ("luau/lib/shared/Geo.luau", "client (server-made meshes don't render)", 'require(ReplicatedStorage.Kit.Geo)'),
     ("luau/lib/shared/Scheduler.luau", "both", 'require(ReplicatedStorage.Kit.Scheduler)'),
+    ("luau/lib/shared/Scene.luau", "both (server look replicates; terrain: server or Edit; zones: client)", 'require(ReplicatedStorage.Kit.Scene)'),
+    ("luau/lib/shared/GeoShapes.luau", "both (register on clients; spots anywhere)", 'require(ReplicatedStorage.Kit.GeoShapes)'),
+    ("luau/lib/shared/Scatter.luau", "both (plan is pure; place on the server or in Edit)", 'require(ReplicatedStorage.Kit.Scatter)'),
+    ("luau/lib/shared/Camera.luau", "client", 'require(ReplicatedStorage.Kit.Camera)'),
 ]
 CARDS = {
     "luau/API.md": ("Moonbrick Kit API", MODULES),
-    "luau/API-CREATIVE.md": ("Moonbrick Kit API: creative modules (Fx, Motion, Pose, Audio, Tex, Geo)", CREATIVE_MODULES),
+    "luau/API-CREATIVE.md": ("Moonbrick Kit API: creative and world modules (Fx, Motion, Pose, Audio, Tex, Geo, Scene, GeoShapes, Scatter, Camera)", CREATIVE_MODULES),
 }
-# Classes whose methods are public even though they are not the module table.
-EXTRA_OWNERS = {"PlayerData": ("Session",)}
+# Plumbing a game never calls: public in Luau for tests and tools, left off the cards to keep them short.
+INTERNAL = {"PlayerData": {"deepCopy", "validate", "reconcile", "Session"}, "Net": {"check"}}
 FUNCTION = re.compile(r"^function (\w+)[.:](\w+)((?:<[^>]*>)?\(.*)$")
 ASSIGN = re.compile(r"^(\w+)\.(\w+) = (.+)$")
 LOCAL_FUNCTION = re.compile(r"^local function (\w+)(<[^>]*>)?(\(.*)$")
@@ -102,7 +106,8 @@ def signature(lines: list[str], index: int, start: str) -> str:
 def card_for(rel: str, side: str, require: str) -> list[str]:
     lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
     name = Path(rel).stem
-    owners = (name,) + EXTRA_OWNERS.get(name, ())
+    owners = (name,)
+    internal = INTERNAL.get(name, set())
     locals_ = {}
     for i, line in enumerate(lines):
         m = LOCAL_FUNCTION.match(line)
@@ -122,10 +127,11 @@ def card_for(rel: str, side: str, require: str) -> list[str]:
         match = FUNCTION.match(line)
         if match and match.group(1) in owners:
             owner, method, sig = match.groups()
-            api.append((f"{owner}.{method}{signature(lines, i, sig)}", doc_above(lines, i)))
+            if method not in internal:
+                api.append((f"{owner}.{method}{signature(lines, i, sig)}", doc_above(lines, i)))
             continue
         match = ASSIGN.match(line)
-        if match and match.group(1) in owners and not match.group(2).startswith("__"):
+        if match and match.group(1) in owners and not match.group(2).startswith("__") and match.group(2) not in internal:
             owner, field, value = match.groups()
             value = value.strip()
             if value in locals_:
