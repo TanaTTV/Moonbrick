@@ -29,29 +29,6 @@
 
 ## 🎮 Showcase
 
-### Element Brawl: a Smash-style fighter, built with Moonbrick
-
-<p align="center">
-  <img src=".github/assets/brawl-stage.jpg" alt="Four elemental fighters on the Sky Shrine stage with a Smash-style damage HUD" width="100%">
-</p>
-
-<table>
-  <tr>
-    <td width="50%"><img src=".github/assets/brawl-clash.jpg" alt="Fighters clash with element-coloured hit sparks"></td>
-    <td width="50%"><img src=".github/assets/brawl-air.jpg" alt="A fighter is launched from the Fire platform"></td>
-  </tr>
-</table>
-
-Pick **Fire, Ice, Storm or Wind**, rack up damage on your rivals and launch them off a floating shrine. Damage is a percentage, not health: the higher it climbs, the further the next hit sends you. Each element has its own special (Flame Dash, Frost Lance, Thunder Blink, Gale Burst). Everyone gets a double jump and a recovery jump, a side-on camera that frames every fighter, KO bursts, screen shake and a damage HUD that punches with every hit. Bots fill empty slots, so it is fun solo. Keyboard, gamepad and touch are all supported.
-
-It is all server-authoritative and built from Moonbrick's libraries: **Net** (validated, rate-limited attacks), **Cooldown**, **Round** (Waiting → Intermission → Playing → Results), **PlayerData** (saved Wins/KOs), **VFX** and **UI**. The knockback, blast-zone, hit-box and tie-break rules are pure and unit tested in CI. The stage is parts only, so it needs no uploads.
-
-```bash
-python scripts/create-example.py my-brawl --example element-brawl   # then: tools/check.sh, rojo build, Play
-```
-
-[How it plays and what it shows off →](examples/element-brawl/README.md)
-
 ### Reyna's Leer, end to end
 
 <p align="center">
@@ -147,7 +124,7 @@ Restart Claude Code or run `/reload-plugins`. Updating the plugin does not touch
 local K = require(game.ServerStorage.MCPKit)
 K.tree("Workspace", 2)                 -- compact tree instead of 20 KB of JSON
 K.test()                               -- run unit tests: "61 passed, 0 failed"
-K.hook("Brawl", "state")               -- drive a feature without clicking
+K.hook("Shop", "buy")                  -- drive a feature without clicking
 K.record("ui", fn) ; K.results("ui")   -- capture what happened, frame by frame
 K.logs()                               -- only warnings/errors since the mark
 K.audit()                              -- deprecated APIs, unvalidated remotes, console-unfriendly input
@@ -214,7 +191,7 @@ Good-looking games come from art, not code:
 
 1. **Reference first.** Share screenshots of what you want; they drive every decision.
 2. **Images over primitives.** Effects are built from textures on particles and billboards, drawn by code or made in Blender, or taken from vetted packs.
-3. **Screenshot review.** Claude captures key moments in Studio, compares them against your references, and fixes what's off before calling anything done. Element Brawl's stage went through four rounds of exactly this.
+3. **Screenshot review.** Claude captures key moments in Studio, compares them against your references, and fixes what's off before calling anything done.
 
 <p align="center">
   <img src=".github/assets/leer-textures.png" alt="Textures drawn by code for the Leer ability" width="80%">
@@ -223,7 +200,7 @@ Good-looking games come from art, not code:
 
 ## 🔬 Tested for real
 
-Every change runs host tests, a headless Luau suite (PlayerData, Net, gameplay and both examples' rules), strict analysis of the Kit and examples, fresh-scaffold builds of the template, recipes and both examples, Rojo import fidelity, and an isolated plugin install/upgrade, on Windows, macOS and Linux.
+Every change runs host tests, a headless Luau suite (PlayerData, Net and gameplay libraries), strict analysis of the Kit, fresh-scaffold builds of the template and recipes, Rojo import fidelity, and an isolated plugin install/upgrade, on Windows, macOS and Linux.
 
 Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/V1-BETA-LEDGER.md)).
 
@@ -235,9 +212,8 @@ Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checke
 - [ ] **v1.1:** real-device touch/gamepad, 2-player streaming and the remaining live DataStore scenarios ([waived for 1.0](acceptance/v1-stable/WAIVERS.md))
 - [x] Blender → Studio mesh, PBR and rig import, with the exact importer settings documented
 - [x] API card and checked recipes in every project
-- [x] Element Brawl showcase
 
-See [ROADMAP.md](ROADMAP.md) for details. The [Crystal Rush example](examples/crystal-rush/README.md) is a smaller collection game that exercises streaming, pickups and saved coins.
+See [ROADMAP.md](ROADMAP.md) for details.
 
 ## 🤝 Contributing
 

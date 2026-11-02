@@ -204,6 +204,9 @@ export type Config = {
 	studioStore: ("memory" | "live")?, -- default memory; never point Studio at production stores
 	onLoadFailed: ((Player, string) -> ())?, -- default: kick with a friendly message
 	onSessionLost: ((Player, string) -> ())?, -- default: kick rather than allow unsaved play
+	-- Live data became unsaveable (e.g. NaN, invalid UTF-8, mixed keys) so autosaves stopped. Default: kick,
+	-- which releases the lock and keeps the last good save instead of silently losing everything after it.
+	onSaveInvalid: ((Player, string) -> ())?,
 	-- Saved data that fails validation is never loaded or overwritten by default (the player gets
 	-- onLoadFailed). To recover, return replacement data from a copy, e.g. `onInvalidData = PlayerData.sanitize`.
 	-- Must not yield. Return nil to keep refusing. The original is kept in the record's `backups` list.
@@ -211,6 +214,7 @@ export type Config = {
 }
 export type Migrate = (data: any, reason: string) -> { [string]: any }?
 export type Session = <object; methods listed below>
+export type Connection = { Connected: boolean, Disconnect: (self: Connection) -> () }
 ```
 
 - `PlayerData.deepCopy<T>(value: T, seen: { [any]: any }?): T`
@@ -226,8 +230,9 @@ export type Session = <object; methods listed below>
 - `Session.save(self: Session, release: boolean?): (boolean, string?)`
   Write the data (refreshing the lock), or release the lock with `release = true`.
   Returns false if another server has taken the lock (this session then stops saving).
-- `PlayerData.loaded: RBXScriptSignal`
-  Fires (player, data) when a player's data has loaded.
+- `PlayerData.loaded = { Connect, Once, Wait }`
+  Fires (player, data) when a player's data has loaded. `data` is the live table (a BindableEvent would
+  pass a copy, so changes made in a listener would never be saved).
 - `PlayerData.start(cfg: Config)`
 - `PlayerData.get(player: Player): { [string]: any }?`
   The player's data table, or nil if not loaded (yet). Mutate it directly, or use set/increment/update.

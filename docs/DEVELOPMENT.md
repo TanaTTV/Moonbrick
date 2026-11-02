@@ -22,7 +22,7 @@ bash tools/check.sh
 rojo build default.project.json -o sandbox.rbxlx
 ```
 
-From the repository root: `python scripts/test-integration.py` validates real Rojo import/startup without touching an existing game; `python scripts/test-upgrade.py` uses the actual 0.1 git snapshot and checks game/settings fidelity and backups. It needs the original commit in local history; CI fetches full history. `python scripts/create-example.py <new-folder>` builds a playable Crystal Rush project.
+From the repository root: `python scripts/test-integration.py` validates real Rojo import/startup without touching an existing game; `python scripts/test-upgrade.py` uses the actual 0.1 git snapshot and checks game/settings fidelity and backups. It needs the original commit in local history; CI fetches full history.
 
 Studio engine tests: `python scripts/test-studio.py .artifacts/studio-tests.luau`, then execute that **trusted generated source** through Studio MCP in the current datamodel. It uses unparented containers, simulated server services and memory stores; does not install scripts, change mode, call live stores or render a playable game. Lifecycle tests in `test-luau.py` use mock Players/BindToClose; real lifecycle/network/physics tests remain separate.
 
@@ -42,7 +42,7 @@ claude plugin validate --strict .claude-plugin/plugin.json
 claude plugin validate --strict skills
 ```
 
-CI checks the host regressions, pinned Luau session/game rules, actual tool checking/building, real Rojo integration, 0.1 upgrade, example build and plugin manifests/components. It does not install Studio, publish assets or access DataStores. Remote CI results are unavailable until this development branch is pushed; do not describe authored YAML as a passing hosted run.
+CI checks the host regressions, pinned Luau session/game rules, actual tool checking/building, real Rojo integration, 0.1 upgrade and plugin manifests/components. It does not install Studio, publish assets or access DataStores. Remote CI results are unavailable until this development branch is pushed; do not describe authored YAML as a passing hosted run.
 
 Rojo startup proves its listener belongs to the launched process or a child before recording ownership. It uses native `netstat`/PowerShell on Windows and `lsof`/`ps` on macOS/Linux. Missing inspection tools fail closed with a status message; existing foreign servers are never stopped or claimed.
 
