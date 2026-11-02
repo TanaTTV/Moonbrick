@@ -1,6 +1,6 @@
 # V1 stable acceptance — execution and evidence
 
-**Status:** 1.0.0 was released on 2026-10-19 with 4 of 13 gates passed and 9 waived to v1.1 by the owner ([WAIVERS.md](WAIVERS.md)). Baseline: [v1.0.0-beta.1](../../docs/history/V1-BETA-LEDGER.md). This folder records the stable release gates; its existence is **not evidence** that the tests ran.
+**Status:** 1.0.0 was released on 2026-10-19 with 4 of 13 gates passed and 9 waived to v1.1 by the owner, then moved to v1.2 ([WAIVERS.md](WAIVERS.md)). Baseline: [v1.0.0-beta.1](../../docs/history/V1-BETA-LEDGER.md). This folder records the stable release gates; its existence is **not evidence** that the tests ran.
 
 ## Check current readiness (offline, no Roblox access)
 
