@@ -53,14 +53,14 @@ Players follow what stands out; signs are the last resort.
 
 ## 6. Dress in three layers
 Only after the route survives a walkthrough.
-1. **Big forms:** buildings, cliffs, large trees. Set the skyline. Use `GeoShapes`, Blender heroes (see `moonbrick:assets`) or Parts.
-2. **Medium:** fences, crates, lamps, rocks, in clusters of 3 to 5 at uneven spacing. `Scatter` for natural placement with a fixed seed.
+1. **Big forms:** buildings, cliffs, large trees. Set the skyline. Use Parts, `Scene.sculpt` terrain, `GeoShapes` or Blender heroes (see `moonbrick:assets`).
+2. **Medium:** fences, crates, lanterns, rocks, in clusters of 3 to 5 at uneven spacing. `Scatter.plan` with a fixed seed, then `Scatter.place`. `avoid = Scatter.around(path, 6)` keeps paths clear. `GeoShapes` has rock, tree, pine, bush, crystal, mushroom, fence, lantern, barrel and crate; clients need `GeoShapes.register()` then `Geo.watch(workspace)`. A few seeds across many spots: each distinct set of attributes is one more mesh. Odd one-off shapes: `Geo.register`.
 3. **Small:** grass, pebbles, cables, signs. Cheap, and last. Set `CastShadow` off on it.
 
 Keep rest areas: leave at least a third of each floor bare so the eye and the character can move. Clutter along the required path is a bug. Dressing beside a walkway has collision off unless it's meant to block.
 
 ## 7. Light the scene
-The world's look lives in `art.json`, not in hand-edited Lighting: scene settings are recorded there and applied explicitly through `Scene`. Applying is a deliberate step you run and report, never a side effect, and a project file must not carry Workspace or Lighting properties. Use `Fx.ambience` for persistent dust, fog or fireflies per area, and `Camera` for fixed or follow rigs if the genre wants one. Terrain and hand-built parts stay in the place file; remind the user to save.
+The world's look lives in `art.json` → `style.scene`, not in hand-edited Lighting. Regenerate `ArtStyle` (see `moonbrick:game-design`), then call `ArtStyle.applyScene()` from a server script. Nothing applies by itself: applying is a step you take and report, and `default.project.json` never carries Workspace or Lighting properties. For a mood per area, `Scene.zone` with `Scene.follow` on clients, or the `Zones` recipe. `Fx.ambience` gives persistent particles in a box. `Camera` has `follow`, `topDown`, `shoulder` and `path` rigs if the genre wants one. Terrain (`Scene.sculpt`, `Scene.paint`) and hand-built parts stay in the place file; remind the user to save.
 
 ## 8. Phones
 Most players are on phones and no phone has been measured in this repo, so treat these as working rules.
@@ -70,7 +70,7 @@ Most players are on phones and no phone has been measured in this repo, so treat
 - `K.perf()` after each dressing layer; if part count jumps, replace repeated parts with clones of one mesh.
 
 ## 9. Review (max 3 rounds)
-1. Tour with `K.cam`/`K.tour`: one stop at player height (eye about 5 studs up) at every area entrance from the Map list, one overhead for the whole layout. Overhead shows flow and empty zones; player height shows what players see.
+1. In a playtest (Client), `K.tour("map", stops)` with one stop at player height (`at` about 5 studs up, `look` at the area's goal, `label` from the Map list) at every area entrance, plus one overhead of the whole layout. Each `K.tour("map")` moves to the next stop, then `screen_capture`; past the last it returns `done`. Overhead shows flow and empty zones; player height shows what players see. `K.cam` retakes one view.
 2. For each shot: can you see where to go next? Is the landmark or the goal the clearest thing? Does it match `art.json`?
 3. Name the top 3 weaknesses, fix them, retake only those stops. Stop at round 3 or when nothing changes the read. For an opinion from something that didn't build it, give the `moonbrick:art-critic` agent the moment and the camera and look-at position of each stop; it captures its own views.
 
@@ -78,6 +78,6 @@ Most players are on phones and no phone has been measured in this repo, so treat
 In a playtest, drive the required route with Studio's `character_navigation` (Client datamodel), area by area in Map order, then sample position to confirm arrival. Passing: each stop reached, in about the time the Map promised (distance ÷ 16). A stuck character means a real blockage or a gap the navigation can't cross; note which. Check jump sections with the test jump instead. Report any section you couldn't drive.
 
 ## 11. Keep it
-`K.toModelJson` refuses complex classes, so export what it accepts to `src/world/` and use native Rojo syncback or `.rbxm` for the rest. Verify the rebuilt copy before deleting anything.
+`K.toModelJson` exports parts, spawns, seats, trusses, attachments, lights, emitters and prompts to `src/world/`. A MeshPart exports as a reference to its uploaded MeshId; runtime `Geo` meshes are refused, so keep their spots instead. Use native Rojo syncback or `.rbxm` for the rest. Verify the rebuilt copy before deleting anything.
 
-Genre checklists (obby, simulator, tycoon, arena combat, horror, RPG hub, lobby): read the one you need in `${CLAUDE_SKILL_DIR}/references/genres.md`. Ready-made gameplay pieces: recipes `Spawn`, `Zones`, `Round`, `Obby` in `tools/recipes/`; Kit signatures in `tools/KIT_CREATIVE.md`.
+Genre checklists (obby, simulator, tycoon, arena combat, horror, RPG hub, lobby): read the one you need in `${CLAUDE_SKILL_DIR}/references/genres.md`. Ready-made gameplay pieces: recipes `Checkpoints`, `Zones`, `Round` and `Obby` in `tools/recipes/`. Kit signatures: `tools/KIT_CREATIVE.md`, the section you need only.

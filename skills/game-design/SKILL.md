@@ -61,9 +61,22 @@ within minutes; nothing modal on spawn.
 Buttons ≥ 48 px, nothing vital in the top corners, thumb-reachable actions; every action reachable by
 gamepad (`ProximityPrompt`, `GuiService.SelectedObject`); `Fx` quality levels for low-end devices.
 
-## 7. Visual review (screenshots, then fix)
-Numbers prove logic; only images prove looks. Capture 1–3 stills at the key moments (freeze effects with
-`Fx.setGlobalTimeScale(0)`; see the studio skill), then score:
+## 7. UI layout
+Design at 1280x720 and let it scale; phones are the real target. Never position a screen with offsets alone.
+- **Root:** `UI.hud(name)` is a safe-area frame clear of the top bar and notches. Everything hangs off it.
+- **Corners:** `UI.anchor` pins groups: stats top-left, currency top-right, actions bottom-right under the
+  right thumb, movement space bottom-left left empty for the touch stick.
+- **Scale:** `UI.responsive` on any fixed-design panel; it clamps at 0.6 so text stays legible. Check the
+  smallest case, not just a desktop window. Body text 14 px or more at design size.
+- **One thing on top:** `UI.modal` for decisions, never on spawn. `UI.tabs` over 3+ sections instead of more
+  buttons, `UI.scroll` for anything that can grow, `UI.grid` inside it for inventories, `UI.bar` for meters.
+- **Gamepad:** `UI.tabs` and `UI.modal` set focus themselves; any other screen calls `UI.focus` when it opens.
+- **HUD budget:** 4 elements in view during play. Anything else opens on demand.
+Colours and fonts come from `ArtStyle`/`UI.useTheme`.
+
+## 8. Visual review (screenshots, then fix)
+Numbers prove logic; only images prove looks. Capture 1–3 stills at the key moments (freeze with
+`K.freeze`; see the studio skill), then score:
 - **Read at a glance:** silhouette and value. Squint: is the focal point still the brightest, clearest thing?
 - **Hierarchy:** one focal point per moment; UI never covers the action.
 - **Direction match:** palette roles, shape language and type from the art direction, not defaults (§3).
@@ -72,7 +85,7 @@ Numbers prove logic; only images prove looks. Capture 1–3 stills at the key mo
 Name the **top 3 weaknesses**, fix them, recapture. Stop after 3 rounds, or sooner if a round finds nothing
 important. Stills can't prove timing or motion: say so and ask the user to watch it play.
 
-## 8. Progression and difficulty
+## 9. Progression and difficulty
 Write these numbers into `docs/design.md`; they decide more than any single feature.
 - **Reward timing:** first reward under 30 s, then gaps that roughly double: 30 s, 1 min, 2 min, 4 min, to a
   5-10 minute rhythm. A new long goal should appear before the last one is finished, so there's never a
@@ -91,9 +104,9 @@ Write these numbers into `docs/design.md`; they decide more than any single feat
   loop behind paying.
 - **Session ends:** finish on a nearly complete goal, not a clean stop.
 
-## 9. Retention and monetization (fair and policy-safe)
+## 10. Retention and monetization (fair and policy-safe)
 Progression, collection, daily goals and social play bring players back. Sell convenience and cosmetics,
 never power. Show odds before any paid random item. Players may be children, so keep it honest.
 
-## 10. When the user gives feedback
+## 11. When the user gives feedback
 Record **why** in `docs/design.md` ("What works" / "Avoid") so future features match their taste.

@@ -48,22 +48,22 @@ Keep total additive coverage small: stacked additive particles at `count` 100 be
 ## 6. Textures
 First choice: built-ins. `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" render fx`, then `... fxtex.py preview fx`, then `Tex.usePreview()` in Studio. `... fxtex.py list` shows the names. Custom ones when the built-ins can't carry the look (a brand-shaped slash, stylised flame): draw white with alpha in Blender with `execute_blender_code` and render to PNG, or generate in Python.
 
-Check every custom texture before use: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxcheck.py" <file>`. Fix what it reports rather than arguing with it.
+Check every custom texture before use: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxcheck.py" <file-or-folder>`. Passing: exit 0; notes don't fail a file. Add `--sheet out.png` for a labelled contact sheet you can open, and `--grid 4` or a `*.flipbook.png` name for flipbooks. Fix what it reports; it checks background, edges, coverage, gutters, empty and repeated cells, and it prints the emitter settings to use.
 
-Rules it can't judge for you: white or near-white so `color` tints it; soft falloff for light and crisp edges for matter; the shape clear of the image edge; 1024 the largest side.
+What it can't judge for you: soft falloff for light and crisp edges for matter, and whether the shape says what you meant at 1/4 size.
 
-**Flipbooks:** 2x2, 4x4 or 8x8 only, in a square sheet of 1024 at most; cells stay empty at the borders so frames don't bleed; a one-shot may end on empty cells, a loop must match its first and last frame. More frames means fewer pixels each: at 8x8 of 1024, a cell is 128 px, fine for small sparks and mushy for a screen-filling explosion. Set `FlipbookLayout` before `FlipbookMode`. Passing means one frame shows at each moment in a capture, never the whole grid.
+**Flipbooks:** a one-shot may end on empty cells; a loop must match its first and last frame. More frames means fewer pixels each: at 8x8 of 1024 a cell is 128 px, fine for small sparks and mushy for a screen-filling explosion. Which sheet sizes survive upload isn't settled (`fxcheck.py` notes anything over 1024), so test yours in Studio. Set `FlipbookLayout` before `FlipbookMode`. Passing means one frame shows at each moment in a capture, never the whole grid.
 
 Previews are visible on this PC only. Before publishing, uploaded ids replace them through `Tex.useFiles`; the `ship` skill checks this.
 
 ## 7. Contact-sheet check (max 3 rounds)
 Stills at the moments that matter prove what code can't:
-1. Play on the client, then step to 4 to 6 moments: the first frame, the peak (usually 0.05 to 0.1 s), mid-body, tail, end. Use `K.freeze`/`K.step` or `Fx.setGlobalTimeScale(0)` and `screen_capture`. Don't try "wait, then capture": turn latency lands at random times.
+1. In the Client datamodel: `K.cam(at, look)`, play the effect, `K.freeze()`, then `screen_capture`; `K.step(0.05)` and capture again for 4 to 6 moments: first frame, peak (usually 0.05 to 0.1 s), mid-body, tail, end. Finish with `K.unfreeze()` and `K.release()`. `K.step` moves Fx exactly, but particles run for that span of real time, so read particle timing loosely. Don't try "wait, then capture": turn latency lands at random times.
 2. Check against a bright and a dark background if the effect appears on both.
 3. Score: Does the first frame read as the event? Is the peak the brightest, clearest moment? Is the tail clean or a lingering smear? Does any frame show an invisible or solid-square layer?
 4. Name the top 3 weaknesses, fix, recapture.
 
-Stop at round 3 or when no fix changes the read. Say plainly that stills don't prove timing, and ask the user to watch it play. For an opinion from something that didn't build it, leave the effect frozen at its peak and give the `moonbrick:art-critic` agent the camera and look-at positions.
+Stop at round 3 or when no fix changes the read. Say plainly that stills don't prove timing, and ask the user to watch it play. For an opinion from something that didn't build it, leave the effect frozen at its peak (`K.freeze`) and give the `moonbrick:art-critic` agent the camera and look-at positions.
 
 ## 8. Before calling it done
 - `Fx.play` on clients; damage and rules stay on the server, broadcast with `Net`.
@@ -71,4 +71,4 @@ Stop at round 3 or when no fix changes the read. Say plainly that stills don't p
 - Measure: `Fx.live()` returns to 0 after the effect; `Fx.length(def)` matches the plan.
 - A failed texture or missing mesh: report the exact error. Never settle silently for a stock texture when the user asked for a custom one.
 
-Persistent atmosphere (dust, fog, fireflies) is `Fx.ambience`, not a long `Fx.play`.
+Persistent atmosphere is `Fx.ambience(region, preset)` with a `Fx.Ambience` preset, not a long `Fx.play`.

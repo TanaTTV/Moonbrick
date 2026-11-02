@@ -4,7 +4,7 @@ Read only your genre. Numbers assume default movement; rescale them if the game 
 
 ## Obby
 - First three stages can't be failed by a new phone player: pads 8x8, gaps 3 to 4, no moving parts.
-- Checkpoint every 3 to 5 jumps at first, then every 5 to 8. Respawn in under 3 seconds.
+- Checkpoint every 3 to 5 jumps at first, then every 5 to 8. Respawn in under 3 seconds. The `Obby` recipe has stages, hazards, a timer and a sample course.
 - Teach one idea per stage: moving pad, then kill brick, then both.
 - Keep the next platform in frame from the current one; a blind jump is a cheap death.
 - Kill bricks read at a glance: one hazard colour, used nowhere else, with a pulse or glow.
@@ -34,7 +34,7 @@ Read only your genre. Numbers assume default movement; rescale them if the game 
 - One power position or pickup worth contesting, exposed on two sides.
 - Every height advantage needs a counter route.
 - Time to cross: 8 to 12 seconds between spawns. Longer than that and matches go quiet.
-- Round maps need a reset state; pair with the `Round` recipe.
+- Round maps need a reset state; the `Round` recipe moves players between `LobbySpawn` and `ArenaSpawn` parts.
 
 ## Horror
 - Light is the mechanic: the player's way forward is the dim one, and safety is lit.

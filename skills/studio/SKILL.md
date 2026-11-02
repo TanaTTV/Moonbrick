@@ -30,7 +30,10 @@ In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. O
 | `K.screen(path)` | screen `x,y` of a part for `user_mouse_input` (Client) |
 | `K.perf(top?)` | instance/part counts, heaviest classes, Studio memory |
 | `K.audit()` | Edit mode only: deprecated APIs, unvalidated remotes, console-unfriendly input, leftovers |
-| `K.toModelJson(path)` | basic primitives/lights/values only; complex meshes/UI/rigs/effects/references require native Rojo syncback or `.rbxm` |
+| `K.toModelJson(path)` | parts, spawns, seats, trusses, attachments, lights, emitters, prompts; a MeshPart becomes a MeshId reference; UI, rigs and runtime `Geo` meshes need native Rojo syncback or `.rbxm` |
+| `K.cam(at, look?, {fov?, hide?})` → `K.release()` | Client: holds the camera and hides the avatar until released |
+| `K.freeze()` → `K.step(dt?)` → `K.unfreeze()` | freezes the game's Fx, Motion, Pose and particles across calls; steps exactly, except particles, which run for dt of real time |
+| `K.tour(name, stops)` → `K.tour(name)` | one viewpoint per call, ready for `screen_capture`; stops are CFrames or `{at, look?, label?, fov?, freeze?}`; returns `done` past the last |
 
 ## Rules
 - **moonbrick project? Code goes through files, never MCP.** Edit `src/**/*.luau` with Read/Edit/Grep, then `bash tools/check.sh`. MCP is for world-building, inspection, tests and playtests. Rojo overwrites MCP edits to synced scripts.
@@ -39,7 +42,7 @@ In a moonbrick project (`tools/MCPKit.luau` exists) the kit is synced by Rojo. O
 - **Return only what you need.** Prefer `K.tree`/`K.props` over `inspect_instance` (every property) and `search_game_tree` (always pass `path`; without it you get ~20 KB of services).
 - **Avoid slow tools unless required:** `subagent` (another LLM), `screen_capture` (image tokens; use for visual/design review, not for logic checks), `generate_*` (async jobs).
 - **Heavy builds:** create in a container outside the DataModel, parent per chunk, `task.wait()` per chunk (~1000 items).
-- **World objects must end up in files:** basic objects via `K.toModelJson`, complex objects via native Rojo syncback/`.rbxm`. Validate property, attribute and reference fidelity in the rebuilt/synced copy before deleting any Studio original; obtain approval for destructive changes.
+- **World objects must end up in files:** via `K.toModelJson` where it applies, otherwise native Rojo syncback/`.rbxm`. Validate property, attribute and reference fidelity in the rebuilt/synced copy before deleting any Studio original; obtain approval for destructive changes.
 - **API docs:** `http_get` with `query` on `create.roblox.com/docs/reference/engine/classes/<Class>.md`.
 
 ## Playtest recipe (~5 calls)
@@ -59,7 +62,7 @@ Hooks bypass input, so UI that only reacts to its own clicks goes stale unnotice
 - **Rojo templates** map Workspace/Lighting properties; never let a project file overwrite Studio's world.
 - **Particle flipbooks:** set `FlipbookLayout` *before* `FlipbookMode` (setting properties from a dictionary loop can do it in the wrong order); otherwise the emitter silently loops frame 1 at 1 fps.
 - **Looks need images, not part shapes.** Particle/beam textures come from files, in two steps: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" render fx`, then `python "${CLAUDE_PLUGIN_ROOT}/scripts/fxtex.py" preview fx` copies them into this PC's Studio content folder (`rbxasset://textures/moonbrick/*`, visible only here), then `Tex.usePreview()` in Studio. Players see stock textures until the files are uploaded and passed to `Tex.useFiles`. `upload_image` takes http(s) URLs, not file paths, so the usual route is the owner uploading the PNGs in Creator Hub; uploads land in their account, so ask first. Same steps for sounds with `python "${CLAUDE_PLUGIN_ROOT}/scripts/sfx.py"`.
-- **EditableImage/EditableMesh (Studio 0.743):** `ParticleEmitter`, `Beam` and `Trail` accept `TextureContent` but render nothing, so use file textures; ImageLabels and Decals render EditableImages. Meshes built on the **server** show a checker on clients: build them on clients (`Geo.dress`). A client allows only 8 live growable meshes, so `Geo` bakes each into a fixed-size copy (destroying a mesh blanks every MeshPart made from it). Faces render one side only: an open bowl needs an inner surface.
-- **Screenshot loop:** `screen_capture` times out when the display sleeps (nudge the mouse first). The default camera reclaims `CurrentCamera`: bind yours every frame at `Camera + 10` and hide your avatar with `LocalTransparencyModifier`. Freeze an effect exactly with `Fx.setGlobalTimeScale(0)`; turn latency makes "wait then capture" land at random times.
+- **EditableImage/EditableMesh (Studio 0.743):** `ParticleEmitter`, `Beam` and `Trail` accept `TextureContent` but render nothing, so use file textures; ImageLabels and Decals render EditableImages. Meshes built on the **server** show a checker on clients: build them on clients (`Geo.watch`). A client allows only 8 live growable meshes, so `Geo` bakes each into a fixed-size copy (destroying a mesh blanks every MeshPart made from it). Faces render one side only: an open bowl needs an inner surface.
+- **Screenshot loop:** set the moment up with `K.cam`, `K.freeze` and `K.tour`, then `screen_capture`; turn latency makes "wait then capture" land at random times. `screen_capture` times out when the display sleeps (nudge the mouse first).
 - **MCP `require` cache is separate from the game's.** Requiring a module from `execute_luau` gives you a fresh copy with its own state: drive game state through DebugHooks, and only require pure or UI-only modules directly.
 - **Studio data isolation:** PlayerData uses memory by default, regardless of API access. Explicit `studioStore = "live"` requires a separate test experience; real provider failures remain failures, never a mid-session memory fallback.

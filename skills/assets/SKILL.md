@@ -13,7 +13,7 @@ argument-hint: "[art manifest or asset brief]"
 | The thing is | Route | Why |
 |---|---|---|
 | Box-shaped: floor, wall, platform, hitbox, trigger | Parts, exported to `src/world/` | Collides, saves, replicates, costs almost nothing |
-| Simple and repeated: rock, crate, fence, lamp, tree | `GeoShapes`/`Geo` spots | No Blender, no upload; clones share one mesh. Published games need "Allow Mesh & Image APIs" |
+| Simple and repeated: rock, crate, fence, lantern, tree | `GeoShapes` spots, or `Geo.register` for your own | No Blender, no upload; clones share one mesh. Published games need "Allow Mesh & Image APIs" |
 | Seen up close, named in the brief, or needs its own silhouette, UVs or PBR: statue, weapon, vehicle, landmark | Blender | Parts and lathes can't hold that shape |
 | Skinned or animated | Blender rig | Read `${CLAUDE_SKILL_DIR}/references/pipeline.md` first |
 
@@ -57,6 +57,6 @@ Report the exact error text and the step that produced it. The `.blend` stays as
 
 ## Keep it
 
-Preserve meshes, UI, rigs and effects as `.rbxm` or native Rojo syncback output. `K.toModelJson` is a basic primitives/light/value exporter; it refuses complex classes and references. Never delete the Studio original before validating fidelity in the rebuilt or synced copy. Iterate on the source and re-export rather than patching in Studio.
+Preserve meshes, UI, rigs and effects as `.rbxm` or native Rojo syncback output. `K.toModelJson` covers parts, spawns, seats, trusses, attachments, lights, emitters and prompts; a MeshPart exports as a reference to its uploaded MeshId, so that id must stay available, and runtime `Geo` meshes are refused. Never delete the Studio original before validating fidelity in the rebuilt or synced copy. Iterate on the source and re-export rather than patching in Studio.
 
 Finish with a screenshot review of readability, consistency, hierarchy, clutter and performance on target devices. Manifest details, PBR, rigs and animation import: `${CLAUDE_SKILL_DIR}/references/pipeline.md`. Maintainer regression for the exporter: `python "${CLAUDE_PLUGIN_ROOT}/scripts/test-blender.py" --blender <executable>` (Blender only, no Roblox import), described in `${CLAUDE_PLUGIN_ROOT}/docs/ASSETS.md`.
