@@ -140,6 +140,8 @@ def _png(path: Path, side: int, rows: list[bytes]):
 
 def render_one(name: str, out: Path, cell: int = 128) -> Path:
     opts, grid = TEXTURES[name]
+    if grid > 1:
+        cell = 1024 // grid  # Studio only accepts 1024x1024 flipbook sheets.
     side = cell * grid
     rows = []
     for py in range(side):

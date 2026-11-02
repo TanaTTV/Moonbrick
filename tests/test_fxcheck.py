@@ -77,6 +77,8 @@ class Case(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
+        fx.FLIPBOOK_SIZE = 64  # fixtures are small; the real size has its own test
+        self.addCleanup(setattr, fx, "FLIPBOOK_SIZE", 1024)
 
     def write(self, name, data):
         path = self.dir / name
@@ -171,10 +173,10 @@ class Sheets(Case):
     def test_eight_wins_when_the_gutters_allow_it(self):
         self.assertEqual(self.check("a.flipbook.png", png(64, 64, sheet(64, 8, margin=2))).grid, 8)
 
-    def test_sheet_size_is_reported_but_not_enforced(self):
+    def test_a_sheet_that_is_not_1024_is_a_problem(self):
+        fx.FLIPBOOK_SIZE = 1024
         report = self.check("a.flipbook.png", png(64, 64, sheet(64, 4)))
-        self.assertHas(report.notes, "not enforced")
-        self.assertEqual(report.problems, [])
+        self.assertHas(report.problems, "1024x1024")
 
     def test_no_gutters_fail(self):
         report = self.check("a.flipbook.png", png(64, 64, lambda x, y: (255, 255, 255, 255 if y == 31 else 0)))

@@ -18,7 +18,7 @@ TEXT_FILES = {".luau", ".lua", ".json", ".txt", ".csv"}
 PREVIEW_CALL = re.compile(r"\bTex\.usePreview\s*\(")
 STUDIO_GUARD = re.compile(r"\bIsStudio\s*\(")
 LOCAL_ASSET = re.compile(r"rbxasset://(?:textures|sounds)/moonbrick/[\w./-]*")
-GEO_USE = re.compile(r"\bGeo\.(?:build|cached|dress|new|toPart|register|unitTorus|unitShard)\s*\(|\bEditableMesh\b|\bEditableImage\b|:CreateEditable(?:Mesh|Image)\b")
+GEO_USE = re.compile(r"\bGeo\.(?:build|cached|dress|watch|model|new|toPart|register|unitTorus|unitShard)\s*\(|\bGeoShapes\.|\bEditableMesh\b|\bEditableImage\b|:CreateEditable(?:Mesh|Image)\b")
 RUNTIME_IMAGE = re.compile(r"\bTex\.(?:get)\s*\(")
 
 

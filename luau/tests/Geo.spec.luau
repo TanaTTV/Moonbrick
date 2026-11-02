@@ -8,6 +8,22 @@ return function(t: any)
 		return b
 	end
 
+	t.test("Scatter.ground lands on the ground, not on spots already placed", function()
+		local Scatter = t.require(game:GetService("ReplicatedStorage").Kit.Scatter)
+		local floor = Instance.new("Part")
+		floor.Anchored, floor.Size, floor.Position = true, Vector3.new(20, 1, 20), Vector3.new(4000, 100, 4000)
+		floor.Parent = workspace
+		local spot = Instance.new("Part")
+		spot.Anchored, spot.Size, spot.Position = true, Vector3.new(6, 6, 6), Vector3.new(4000, 110, 4000)
+		spot:SetAttribute("GeoShape", "rock")
+		spot.Parent = workspace
+		local hit = Scatter.ground({ top = 200 })(4000, 4000)
+		floor:Destroy()
+		spot:Destroy()
+		t.ok(hit, "found the ground")
+		t.ok(math.abs(hit.position.Y - 100.5) < 0.01, "landed on the spot")
+	end)
+
 	t.test("every built-in shape builds and faces outward on real meshes", function()
 		local GeoShapes = t.require(game:GetService("ReplicatedStorage").Kit.GeoShapes)
 		for name, build in GeoShapes.Builders do

@@ -230,11 +230,19 @@ function Scatter.ground(opts: { top: number, depth: number?, exclude: { Instance
 	params.IgnoreWater = false -- so props don't sink to the lake bed; `Scatter.plan` drops water hits
 	local depth = opts.depth or math.max(math.abs(opts.top) * 2, 1000)
 	return function(x, z)
-		local hit = workspace:Raycast(Vector3.new(x, opts.top, z), Vector3.new(0, -depth, 0), params)
-		if not hit then
-			return nil
+		-- Props already placed aren't ground: step through their invisible spots.
+		local top = opts.top
+		for _ = 1, 8 do
+			local hit = workspace:Raycast(Vector3.new(x, top, z), Vector3.new(0, -depth, 0), params)
+			if not hit then
+				return nil
+			end
+			if hit.Instance:GetAttribute("GeoShape") == nil then
+				return { position = hit.Position, normal = hit.Normal, material = hit.Material }
+			end
+			top = hit.Position.Y - 0.05
 		end
-		return { position = hit.Position, normal = hit.Normal, material = hit.Material }
+		return nil
 	end
 end
 

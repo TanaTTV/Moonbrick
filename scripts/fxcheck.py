@@ -22,6 +22,7 @@ import sys
 import zlib
 
 MAX_FILE_BYTES = 32 * 1024 * 1024
+FLIPBOOK_SIZE = 1024
 MAX_SIDE = 4096  # checked before decoding, so a huge file can't stall the check
 LOW = 8  # alpha or brightness at or below this counts as nothing drawn
 GRIDS = (8, 4, 2)
@@ -281,7 +282,8 @@ def check_single(report: Report, image: Image, result: Measure):
 
 def check_sheet(report: Report, image: Image, result: Measure, note: Note, forced: int | None):
     width, height = image.width, image.height
-    report.notes.append(f"sheet size {width}x{height} reported only: the sheet-size rule is unresolved, so it is not enforced.")
+    if (width, height) != (FLIPBOOK_SIZE, FLIPBOOK_SIZE):
+        report.problems.append(f"the sheet is {width}x{height}; Studio reports flipbooks as incompatible unless the texture is {FLIPBOOK_SIZE}x{FLIPBOOK_SIZE}.")
     size_note(report, width, height)
     inferred = next((grid for grid in GRIDS if fits(image, grid) and gutters_clear(result.mask, width, height, grid)), 0)
     wanted = forced if forced is not None else note.grid
