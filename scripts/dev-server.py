@@ -7,6 +7,7 @@ import signal
 import socket
 import struct
 import subprocess
+import sys
 import time
 import urllib.request
 
@@ -84,7 +85,8 @@ def proc_listener_pids(port, proc=Path("/proc")):
 
 def listener_pid(port):
     if os.name == "nt":
-        result = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, check=True, timeout=3)
+        # errors=replace: the console code page isn't UTF-8 on localized Windows, and PYTHONUTF8 would make that fatal.
+        result = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, errors="replace", check=True, timeout=3)
         # The state column is translated on non-English Windows; a listener is the row with no remote peer.
         owners = {int(row[-1]) for line in result.stdout.splitlines() if len(row := line.split()) >= 5 and row[0] == "TCP" and row[1] == f"127.0.0.1:{port}" and row[2] == "0.0.0.0:0" and row[-1].isdigit()}
     elif shutil.which("lsof"):
@@ -159,7 +161,8 @@ def stop_tree(process):
             pass
 
 
-STALE_LOCK = 60  # startup holds the lock for at most ~5 s; an older lock was left by a killed process
+STARTUP_SECONDS = 15  # large imports answer slowly; stays under the SessionStart hook's 20 s budget
+STALE_LOCK = 60  # startup holds the lock for at most STARTUP_SECONDS; an older lock was left by a killed process
 
 
 def take_lock(lock: Path) -> bool:
@@ -186,6 +189,30 @@ def take_lock(lock: Path) -> bool:
     return False
 
 
+def free_port(start: int) -> int:
+    for port in range(start + 1, min(start + 200, 65536)):
+        with socket.socket() as candidate:
+            try:
+                candidate.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+        return port
+    return start + 1
+
+
+def conflict_help(port: int) -> str:
+    """The way out of a taken port, in one line the AI can act on or relay."""
+    spare = free_port(port)
+    try:
+        pid = listener_pid(port)
+        stop = f"taskkill /PID {pid} /T /F" if os.name == "nt" else f"kill {pid}"
+        stop = f"stop it with `{stop}` and restart this session"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        stop = "stop that program and restart this session"
+    return (f"To fix it, either {stop}, or set \"servePort\": {spare} in default.project.json, "
+            f"restart this session, and enter port {spare} in Studio's Rojo plugin before Connect.")
+
+
 def ensure(project: Path):
     project = project.resolve()
     cfg = json.loads((project / "default.project.json").read_text(encoding="utf-8"))
@@ -205,14 +232,14 @@ def ensure(project: Path):
         with socket.socket() as connection:
             connection.settimeout(0.5)
             if connection.connect_ex(("127.0.0.1", port)) == 0:
-                print(f"moonbrick: port {port} is occupied by an unrecognized service; choose another servePort.")
+                print(f"moonbrick: port {port} is occupied by an unrecognized service, so Rojo did not start. {conflict_help(port)}")
                 return None
     else:
         owned = json.loads(marker.read_text()) if marker.exists() else {}
         if current["projectName"] == name and owned.get("project") == str(project) and owned.get("sessionId") == current["sessionId"]:
-            print(f"moonbrick: Rojo already serving {name!r} on :{port}; verify Studio is connected.")
+            print(f"moonbrick: Rojo already serving {name!r} on :{port}; verify Studio is connected to that port.")
         else:
-            print(f"moonbrick: :{port} serves {current['projectName']!r}; ownership for this folder is unverified. Choose another servePort or inspect the existing server.")
+            print(f"moonbrick: :{port} serves {current['projectName']!r}; ownership for this folder is unverified, so this project is not syncing. {conflict_help(port)}")
         return None
     rojo = shutil.which("rojo")
     if not rojo: raise ValueError("Rojo unavailable; run setup-tools.sh")
@@ -224,7 +251,7 @@ def ensure(project: Path):
     try:
         with (project / ".rojo.log").open("a", encoding="utf-8") as log:
             process = subprocess.Popen([rojo, "serve", "default.project.json", "--port", str(port), "--address", "127.0.0.1"], cwd=project, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=os.name != "nt", creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + STARTUP_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None: raise ValueError("Rojo failed to start; see .rojo.log")
             try:
@@ -239,9 +266,9 @@ def ensure(project: Path):
             if process.poll() is not None: raise ValueError("owned Rojo process exited during startup")
             marker.write_text(json.dumps({"pid": process.pid, "project": str(project), "port": port, "sessionId": current["sessionId"]}) + "\n", encoding="utf-8")
             started = True
-            print(f"moonbrick: started Rojo for {name!r} on :{port}; connect Studio and review its diff.")
+            print(f"moonbrick: started Rojo for {name!r} on :{port}; in Studio's Rojo plugin use port {port}, Connect, and review its diff.")
             return process
-        raise ValueError("Rojo startup timed out; see .rojo.log")
+        raise ValueError(f"Rojo did not answer within {STARTUP_SECONDS} s; see .rojo.log, then restart this session")
     finally:
         # Never stop another project/process, but stop this launch's own child if it failed: left running, it
         # holds the port unowned and every later session reports "ownership unverified".
@@ -251,10 +278,26 @@ def ensure(project: Path):
             stop_tree(process)
 
 
+def session_notes(project: Path, kit: Path) -> list[str]:
+    """What a session can't see on its own: where the plugin lives, a stale Kit, a missing design doc."""
+    notes = [f"moonbrick: plugin scripts are in {(kit / 'scripts').as_posix()}."]
+    try:
+        current = json.loads((kit / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
+        installed = (project / "tools/.moonbrick-version").read_text(encoding="utf-8").strip()
+    except (OSError, ValueError, KeyError):
+        return notes
+    if installed != current:
+        notes.append(f"moonbrick: this project has Kit {installed}, the plugin has {current}; ask the user to run /moonbrick:update.")
+    return notes
+
+
 if __name__ == "__main__":
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         root = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
         if (root / "default.project.json").is_file() and (root / "tools/MCPKit.luau").is_file():
             ensure(root)
+            print("\n".join(session_notes(root, Path(__file__).resolve().parents[1])))
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"moonbrick: {error}")
