@@ -14,11 +14,12 @@ local RESPAWN = 5
 local MAX_DISTANCE = 12
 
 local taken: { [BasePart]: boolean } = {}
-local glows: { [BasePart]: { ParticleEmitter | PointLight } } = {}
+local glows: { [BasePart]: { sparkle: ParticleEmitter, light: PointLight } } = {}
 
 local function setGlow(coin: BasePart, enabled: boolean)
-	for _, effect in glows[coin] or {} do
-		effect.Enabled = enabled
+	local glow = glows[coin]
+	if glow then
+		glow.sparkle.Enabled, glow.light.Enabled = enabled, enabled
 	end
 end
 
@@ -55,7 +56,7 @@ local function setup(instance: Instance)
 	end
 	local coin = instance
 	local sparkle, light = VFX.glow(coin)
-	glows[coin] = { sparkle, light }
+	glows[coin] = { sparkle = sparkle, light = light }
 	coin.Touched:Connect(function(hit)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if player then
