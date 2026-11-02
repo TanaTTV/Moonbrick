@@ -1,6 +1,6 @@
 ---
 name: assets
-description: 'Make 3D models for a Roblox game (props, trees, weapons, statues, buildings, rigs): pick Parts, Geo or Blender, model in Blender, export FBX, import to Studio. Use for "make a model", "low-poly tree", "build this in Blender", "import this FBX".'
+description: 'Make or improve 3D models for a Roblox game (props, trees, weapons, statues, buildings, rigs): pick Parts, Geo or Blender, model and review in Blender, show in Studio. Use for "make a model", "this model looks bad", "make it look better in Blender", "low-poly tree", "import this FBX".'
 argument-hint: "[art manifest or asset brief]"
 ---
 
