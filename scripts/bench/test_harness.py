@@ -441,5 +441,61 @@ end)
         self.assertEqual(medians['A']['output_tokens'], 100)
 
 
+class Launch(unittest.TestCase):
+    """The harness must start on a real machine: no branch list, a native CLI, the active account."""
+
+    def test_windows_prefers_a_native_claude_on_path(self):
+        with patch.object(run.os, 'name', 'nt'), patch.object(run.shutil, 'which', lambda name: r'C:\\tools\\claude.exe' if name == 'claude.exe' else None):
+            self.assertEqual(run.claude_command(), [r'C:\\tools\\claude.exe'])
+
+    def test_windows_finds_the_installer_binary_off_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / '.local/bin').mkdir(parents=True)
+            (home / '.local/bin/claude.exe').write_bytes(b'')
+            with patch.object(run.os, 'name', 'nt'), patch.object(run.shutil, 'which', return_value=None), patch.object(run.Path, 'home', return_value=home):
+                self.assertEqual(run.claude_command(), [str(home / '.local/bin/claude.exe')])
+
+    def test_windows_refuses_a_bare_cmd_wrapper(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            which = lambda name: str(Path(tmp) / 'claude.cmd') if name == 'claude.cmd' else None
+            with patch.object(run.os, 'name', 'nt'), patch.object(run.shutil, 'which', which), patch.object(run.Path, 'home', return_value=Path(tmp)):
+                with self.assertRaisesRegex(RuntimeError, 'truncates'):
+                    run.claude_command()
+
+    def test_missing_claude_is_a_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(run.shutil, 'which', return_value=None), patch.object(run.Path, 'home', return_value=Path(tmp)):
+            with self.assertRaisesRegex(RuntimeError, 'unavailable'):
+                run.claude_command()
+
+    def test_credentials_come_from_the_active_config_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            account = Path(tmp) / 'account2'
+            account.mkdir()
+            (account / '.credentials.json').write_text('{"marker": "active"}')
+            temp = Path(tmp) / 'run'
+            temp.mkdir()
+            with patch.dict(run.os.environ, {'CLAUDE_CONFIG_DIR': str(account)}):
+                env = run.isolated_env(temp, {})
+            self.assertEqual(env['CLAUDE_CONFIG_DIR'], str(temp / 'claude-config'))
+            self.assertIn('active', (temp / 'claude-config/.credentials.json').read_text())
+
+    def test_config_dir_defaults_to_home(self):
+        env = {k: v for k, v in os.environ.items() if k != 'CLAUDE_CONFIG_DIR'}
+        with patch.dict(run.os.environ, env, clear=True):
+            self.assertEqual(run.claude_config_dir(), Path.home() / '.claude')
+
+    def test_paid_run_needs_a_clean_checkout_but_can_be_overridden(self):
+        with patch.object(run, 'command', return_value={'stdout': ' M scripts/x.py\n'}):
+            with self.assertRaisesRegex(RuntimeError, 'uncommitted'):
+                run.require_clean_checkout()
+            run.require_clean_checkout(allow_dirty=True)
+        with patch.object(run, 'command', return_value={'stdout': ''}):
+            run.require_clean_checkout()
+
+    def test_no_branch_allowlist_remains(self):
+        self.assertNotIn('wrong benchmark branch', (run.HERE / 'run.py').read_text(encoding='utf-8'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -68,20 +68,33 @@ def command(args, cwd=ROOT, env=None, timeout=120):
                     wall_seconds=time.monotonic() - start)
 
 
+def claude_config_dir():
+    return Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')
+
+
 def claude_command():
-    # Use the JS entrypoint directly: Windows .cmd quoting loses inline JSON.
-    node, wrapper = shutil.which('node'), shutil.which('claude.cmd' if os.name == 'nt' else 'claude')
-    if os.name == 'nt' and wrapper:
-        package = Path(wrapper).parent / 'node_modules/@anthropic-ai/claude-code'
-        # Newer packages ship a native bin/claude.exe; cmd.exe would cut argv at the prompt's first newline.
-        if (package / 'bin/claude.exe').is_file():
-            return [str(package / 'bin/claude.exe')]
-        if node and (package / 'cli.js').is_file():
-            return [node, str(package / 'cli.js')]
-        raise RuntimeError('only the claude.cmd wrapper was found; it truncates multi-line prompts')
+    # Use a native binary or the JS entrypoint: Windows .cmd quoting loses inline JSON and cuts multi-line prompts.
+    if os.name != 'nt':
+        found = shutil.which('claude')
+        if not found:
+            raise RuntimeError('claude executable unavailable')
+        return [found]
+    native = shutil.which('claude.exe')
+    if native:
+        return [native]
+    installer = Path.home() / '.local/bin/claude.exe'
+    if installer.is_file():
+        return [str(installer)]
+    node, wrapper = shutil.which('node'), shutil.which('claude.cmd')
     if not wrapper:
         raise RuntimeError('claude executable unavailable')
-    return [wrapper]
+    package = Path(wrapper).parent / 'node_modules/@anthropic-ai/claude-code'
+    # Newer packages ship a native bin/claude.exe; cmd.exe would cut argv at the prompt's first newline.
+    if (package / 'bin/claude.exe').is_file():
+        return [str(package / 'bin/claude.exe')]
+    if node and (package / 'cli.js').is_file():
+        return [node, str(package / 'cli.js')]
+    raise RuntimeError('only the claude.cmd wrapper was found; it truncates multi-line prompts')
 
 
 def tools():
@@ -99,9 +112,9 @@ def tools():
 
 
 def user_config_snapshot():
-    paths = [Path.home() / '.claude/settings.json', Path.home() / '.claude/settings.local.json',
-             Path.home() / '.claude/plugins/installed_plugins.json',
-             Path.home() / '.claude/plugins/known_marketplaces.json']
+    config = claude_config_dir()
+    paths = [config / 'settings.json', config / 'settings.local.json',
+             config / 'plugins/installed_plugins.json', config / 'plugins/known_marketplaces.json']
     return {str(p): digest(p) if p.is_file() else None for p in paths}
 
 
@@ -145,6 +158,13 @@ def trial_order(conditions, reps):
             for condition in (list(reversed(conditions)) if repetition % 2 else conditions)]
 
 
+def require_clean_checkout(allow_dirty=False):
+    """A paid run must measure a commit: base_sha in setup.json is what makes the numbers reproducible."""
+    changed = command(['git', 'status', '--porcelain', '--untracked-files=no'])['stdout'].strip()
+    if changed and not allow_dirty:
+        raise RuntimeError('tracked files have uncommitted changes, so base_sha would not describe this run; commit them or pass --allow-dirty')
+
+
 def prepare(batch, conditions=None, reps=3):
     conditions = conditions or ['A', 'B']
     cli = claude_command()
@@ -158,9 +178,6 @@ def prepare(batch, conditions=None, reps=3):
                 tools=tools(), user_config_before=user_config_snapshot(),
                 git_status_before=command(['git', 'status', '--porcelain'])['stdout'],
                 template_hashes={p.name: digest(p) for p in [ROOT / 'template/.luaurc', ROOT / 'template/selene.toml', ROOT / 'template/tools/check.sh']})
-    # Measure only from known benchmark branches; perf/kit-api-card measures the API card + recipes change.
-    if spec['branch'] not in ('dev/v1-beta-bench', 'perf/kit-api-card'):
-        raise RuntimeError('wrong benchmark branch')
     for name, path in spec['tools'].items():
         spec.setdefault('tool_versions', {})[name] = command([path, '--version'])
         spec.setdefault('tool_hashes', {})[name] = digest(Path(path))
@@ -216,7 +233,7 @@ def isolated_env(temp, binaries, copy_credentials=True):
     home, config, bin_dir = temp / 'home', temp / 'claude-config', temp / 'bin'
     for p in (home, config, bin_dir, temp / 'tmp'):
         p.mkdir()
-    creds = Path.home() / '.claude/.credentials.json'
+    creds = claude_config_dir() / '.credentials.json'
     if copy_credentials and creds.is_file():
         # Never save credentials in artifacts or committed summaries.
         shutil.copyfile(creds, config / '.credentials.json')
@@ -470,6 +487,7 @@ def main():
     parser.add_argument('--conditions', default='A,B', help='Comma-separated selection from A,B,E (default: A,B)')
     parser.add_argument('--reps', type=int, default=3, help='Repetitions per condition (positive integer; default: 3)')
     parser.add_argument('--approved-shared-quota', action='store_true', help='Explicit user approval for existing Claude sessions')
+    parser.add_argument('--allow-dirty', action='store_true', help='Allow --run with uncommitted tracked changes (recorded in setup.json)')
     parser.add_argument('--batch', type=Path)
     args = parser.parse_args()
     conditions = [c.strip() for c in args.conditions.split(',')]
@@ -491,6 +509,11 @@ def main():
     if args.run or args.dry_run:
         if any(batch.glob('*/command.json')):
             parser.error('batch already contains command artifacts; choose a new batch')
+    if args.run:
+        try:
+            require_clean_checkout(args.allow_dirty)
+        except RuntimeError as e:
+            parser.error(str(e))
     spec = prepare(batch, conditions, args.reps)
     print(f'Artifacts: {batch}', flush=True)
     if args.dry_run:
