@@ -13,7 +13,8 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=flat-square">
   <img alt="Luau" src="https://img.shields.io/badge/Luau-strict-00a2ff?style=flat-square">
   <img alt="Rojo" src="https://img.shields.io/badge/Rojo-7.7-e13835?style=flat-square">
-  <img alt="Platforms" src="https://img.shields.io/badge/Windows%20%7C%20macOS-supported-555?style=flat-square">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-supported-555?style=flat-square">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-CI%20only-555?style=flat-square">
 </p>
 
 <p align="center">
@@ -55,7 +56,7 @@ AI can write Luau, but Roblox development with AI usually goes like this: slow t
 
 ## 📦 Install
 
-You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), Python 3.10+, `git` and `curl`. On Windows, use Git Bash. Blender is optional.
+You need [Claude Code](https://claude.com/claude-code), [Roblox Studio](https://create.roblox.com/) with the **Studio MCP** enabled (Studio → Assistant settings), Python 3.10+, `git` and `curl`. On Windows, use Git Bash. Blender is optional. macOS passes CI, but nobody has run a full Studio session on a Mac yet.
 
 In Claude Code:
 
@@ -79,7 +80,7 @@ Then start your first game:
 /moonbrick:new my-game
 ```
 
-The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) with pinned Rojo, luau-lsp, Selene and StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, review the connection diff, and ask for what you want ("add a coin shop", "make the ability feel punchier"). Start with the command or say "use Moonbrick": for a terse "make a Roblox game", Claude didn't pick up the skills on its own in our benchmark.
+The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) with pinned Rojo, luau-lsp, Selene and StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, review the connection diff, and ask for what you want ("add a coin shop", "make the ability feel punchier"). Start with the command or say "use Moonbrick". In our benchmark, Claude didn't pick up the skills on its own (0 of 3 runs) even though the 196-word prompt named Moonbrick, and plain requests like "make a Roblox game" haven't been measured.
 
 <details>
 <summary><b>Upgrading from 0.1 or a beta</b></summary>
@@ -104,13 +105,19 @@ Restart Claude Code or run `/reload-plugins`. Updating the plugin does not touch
 | `/moonbrick:review` | Code, security, performance, mobile/console and **screenshot-based design** review → a prioritized fix list. |
 | `/moonbrick:ship` | Pre-publish checklist including player-data safety, then a tagged release. |
 | `/moonbrick:update` | Update a project's bundled Moonbrick code to the installed version. |
-| `/moonbrick:assets` | Optional Blender workflow: shared art style and budgets, FBX export, and the exact Studio import settings for meshes, PBR and rigs. |
+| `/moonbrick:assets` | 3D models: picks Parts, Geo or Blender, models in Blender through its MCP with a look-and-fix loop, exports FBX, and gives the exact Studio import settings for meshes, PBR and rigs. Blender is optional; Studio import is a manual step. |
 
 ### Skills (load automatically when relevant)
 
 - **`studio`**: the fast, token-efficient way to drive Roblox Studio, plus hard-won gotchas (new avatar joints, flipbook quirks, edit-mode require caching…).
 - **`game-systems`**: server authority, exploit-proof remotes, data saving, and pointers to the project's API card and recipes.
-- **`game-design`**: design docs, game feel ("juice"), first-time experience, mobile/console support, visual review, fair monetization.
+- **`game-design`**: design docs, progression and difficulty, game feel ("juice"), UI layout, first-time experience, mobile/console support, visual review, fair monetization.
+- **`level-design`**: maps from the core loop: a text map, greybox blockout at real Roblox scale, guiding the eye, pacing, three-layer dressing, genre checklists and review tours.
+- **`vfx`**: composing effects: silhouette first, layer timing with numbers, additive vs alpha, palette roles, textures and flipbooks, and a contact-sheet check.
+
+### Agents
+
+- **`art-critic`**: scores views against `assets/art.json` without having built them and returns the top 3 weaknesses.
 
 ### In every project
 
@@ -194,7 +201,7 @@ Good-looking games come from a direction, not defaults:
 
 1. **A short brief.** At most three questions (the moment that matters, references, mood or genre mix), or three contrasting directions if you'd rather pick. It's recorded once in `docs/design.md` and `assets/art.json`, which generate the game's UI theme and effect palette.
 2. **References, not copies.** Share screenshots; Claude takes their palette, lighting and silhouettes, never their characters or logos.
-3. **Screenshot review.** Claude freezes key moments in Studio, fixes the three biggest weaknesses, and repeats until nothing important is left. Stills can't show motion, so it asks you to watch.
+3. **Screenshot review.** Claude freezes key moments in Studio, fixes the three biggest weaknesses, and stops after at most three rounds. Stills can't show motion, so it asks you to watch.
 
 [Designing with Moonbrick →](docs/DESIGNING.md)
 
@@ -205,19 +212,19 @@ Good-looking games come from a direction, not defaults:
 
 ## 🔬 Tested for real
 
-Every change runs host tests, a headless Luau suite (PlayerData, Net, gameplay and the pure parts of the creative modules), strict analysis of the Kit, fresh-scaffold builds of the template and recipes, Rojo import fidelity, and an isolated plugin install/upgrade, on Windows, macOS and Linux.
+Every change runs host tests, a headless Luau suite (PlayerData, Net, gameplay and the pure parts of the creative modules), strict analysis of the Kit, fresh-scaffold builds of the template and recipes, and Rojo import fidelity on Windows, macOS and Linux, plus an isolated plugin install/upgrade on Windows and Linux. No full Studio session has been run on a Mac.
 
-Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/V1-BETA-LEDGER.md)).
+Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/history/V1-BETA-LEDGER.md)).
 
 ## 🗺 Roadmap
 
 - [ ] **Safe Creator Store assets:** search and insert with quarantine, a backdoor scan and export to files
 - [ ] **Community kit library:** share and install reusable systems (shops, abilities, round loops) as kits
-- [ ] Design-review rubric, lighting presets, and the texture generator as a reusable tool
 - [ ] **v1.2:** real-device touch/gamepad, 2-player streaming and the remaining live DataStore scenarios ([waived for 1.0](acceptance/v1-stable/WAIVERS.md))
 - [x] Blender → Studio mesh, PBR and rig import, with the exact importer settings documented
 - [x] API card and checked recipes in every project
 - [x] Creative engine (Fx, Motion, Pose, Audio, Tex, Geo) and creative brief (V1.1)
+- [x] World and level tools, a Blender creation route, effect composition and an art critic (V1.1)
 
 See [ROADMAP.md](ROADMAP.md) for details.
 

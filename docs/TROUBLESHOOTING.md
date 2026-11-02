@@ -42,7 +42,7 @@ Studio caches `require` in Edit mode until it restarts. Test in a playtest (fres
 
 ## The skills didn't kick in
 
-For a short request like "make a Roblox game", Claude may not pick up the skills on its own (see the [benchmark](BENCHMARK-SUMMARY.md)). Start with `/moonbrick:new`, or say "use Moonbrick". Inside a project, start Claude Code in the project folder so its `CLAUDE.md` loads.
+Claude may not pick up the skills on its own: in the [benchmark](BENCHMARK.md) that happened in 3 of 3 runs, on a 196-word prompt that named Moonbrick. Plain requests like "make a Roblox game" haven't been measured. Start with `/moonbrick:new`, or say "use Moonbrick". Inside a project, start Claude Code in the project folder so its `CLAUDE.md` loads.
 
 ## "Moonbrick project safety tools require Python 3.10+"
 
