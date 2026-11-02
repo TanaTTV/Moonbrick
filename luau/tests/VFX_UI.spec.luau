@@ -38,6 +38,22 @@ return function(t: any)
 		end
 	end)
 
+	t.test("meters, lists and grids use real layout objects", function()
+		local holder = Instance.new("Folder")
+		local bar = UI.bar({ parent = holder, value = 3, max = 4, label = true })
+		t.eq(bar.fill.Size.X.Scale, 0.75)
+		local scroll = UI.scroll({ parent = holder })
+		t.eq(scroll.AutomaticCanvasSize, Enum.AutomaticSize.Y)
+		local grid = UI.grid({ parent = scroll, columns = 4, gap = 8 })
+		local layout = grid:FindFirstChildOfClass("UIGridLayout")
+		t.ok(layout ~= nil and layout.CellSize.X.Scale == 0.25, "column width")
+		local tabs = UI.tabs({ parent = holder, tabs = { { id = "a", text = "A" }, { id = "b", text = "B" } } })
+		tabs.select("b")
+		t.eq(tabs.pages.a.Visible, false)
+		t.eq(tabs.pages.b.Visible, true)
+		holder:Destroy()
+	end)
+
 	t.test("buttons get theme styling, touch-size minimum and click wiring", function()
 		local holder = Instance.new("Folder")
 		local clicked = false
