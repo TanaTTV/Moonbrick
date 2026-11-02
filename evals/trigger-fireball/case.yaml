@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: trigger-fireball
+description: An effect polish request should reach the effect guidance.
+tags: [trigger]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: "make a fireball look better"
+  max_turns: 3
+  timeout_seconds: 120
+  allowed_tools: [Skill, Read, Glob, Grep]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-the-skill
+    tool: Skill
+    input_match: "moonbrick:(vfx|game-design)"

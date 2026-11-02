@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: negative-react
+description: A web app request must not load Moonbrick.
+tags: [negative]
+execution:
+  prompt: "build a React todo app with a login page"
+  max_turns: 3
+  timeout_seconds: 120
+  allowed_tools: [Skill, Read, Glob, Grep]
+runs: 3
+graders:
+  - type: tool_used
+    name: leaves-moonbrick-alone
+    tool: Skill
+    input_match: "moonbrick:"
+    min: 0
+    max: 0

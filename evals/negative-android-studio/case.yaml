@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: negative-android-studio
+description: The word Studio alone must not load Moonbrick.
+tags: [negative]
+execution:
+  prompt: "my Android Studio build fails with a Gradle error"
+  max_turns: 3
+  timeout_seconds: 120
+  allowed_tools: [Skill, Read, Glob, Grep]
+runs: 3
+graders:
+  - type: tool_used
+    name: leaves-moonbrick-alone
+    tool: Skill
+    input_match: "moonbrick:"
+    min: 0
+    max: 0
