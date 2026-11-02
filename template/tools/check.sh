@@ -34,6 +34,15 @@ rojo sourcemap default.project.json -o "$tmp/sourcemap.json" >"$tmp/rojo" 2>&1 \
 	&& [ -s "$tmp/sourcemap.json" ] || { cat "$tmp/rojo"; echo 'error: rojo sourcemap failed'; exit 2; }
 mv "$tmp/sourcemap.json" sourcemap.json || exit 2
 
+# A file Rojo doesn't map never reaches Studio, and the analyzers below can't see that. Fail instead of a false OK.
+unmapped=""
+if [ -d src ]; then
+	rojo sourcemap default.project.json --include-non-scripts -o "$tmp/all.json" >"$tmp/rojo" 2>&1 \
+		|| { cat "$tmp/rojo"; echo 'error: rojo sourcemap failed'; exit 2; }
+	tr '\\' '/' <"$tmp/all.json" | sed 's#//*#/#g' | grep -oE '"[^"]+"' | tr -d '"' | sed 's#^\./##' | LC_ALL=C sort -u >"$tmp/mapped"
+	unmapped="$(find src -type f \( -name '*.luau' -o -name '*.lua' -o -name '*.model.json' \) | LC_ALL=C sort | LC_ALL=C comm -23 - "$tmp/mapped")"
+fi
+
 luau_status=0; lint_status=0
 luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau --formatter=plain "${dirs[@]}" >"$tmp/types-out" 2>&1 || luau_status=$?
 selene --display-style=quiet "${dirs[@]}" >"$tmp/lint-out" 2>&1 || lint_status=$?
@@ -54,4 +63,9 @@ if [ "$luau_status" -ne 0 ] || [ "$lint_status" -ne 0 ]; then
 	exit 1
 fi
 [ -z "$out" ] || exit 1
+if [ -n "$unmapped" ]; then
+	printf '%s\n' "$unmapped" | head -n 20 | sed 's/$/: not in default.project.json, so it never reaches Studio/'
+	echo 'error: move these files into a mapped src/ folder or add a mapping'
+	exit 1
+fi
 echo OK

@@ -3,18 +3,26 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
+import sys
 import tempfile
 import uuid
 
 KIT = Path(__file__).resolve().parents[1]
 ENTRIES = ("ServerScriptService", "ReplicatedStorage", "ReplicatedFirst", "ServerStorage", "StarterGui", "StarterPlayer/StarterPlayerScripts", "StarterPlayer/StarterCharacterScripts")
+# Where CLAUDE.md, the skills and the recipes put new code. Import keeps these reachable next to the mirrored services.
+GAME_FOLDERS = {"ServerScriptService": ("Server", "src/server"), "ReplicatedStorage": ("Shared", "src/shared"), "StarterPlayer/StarterPlayerScripts": ("Client", "src/client")}
+# Rojo's default stays free for hand-made projects; each scaffold gets a stable port of its own.
+PORT_BASE, PORT_SPAN = 34873, 1000
+INCOMPLETE = ".moonbrick/scaffold-incomplete"
 
 
 def run(*args: str, cwd: Path) -> str:
@@ -129,22 +137,107 @@ def sync(project: Path):
         print(f"Previous files: {backup}")
 
 
+def port_free(port: int) -> bool:
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def pick_port(target: Path) -> int:
+    """A stable per-project port, skipping sibling projects and anything listening now."""
+    taken = set()
+    for sibling in target.parent.glob("*/default.project.json"):
+        try:
+            taken.add(read_json(sibling).get("servePort"))
+        except (OSError, ValueError, AttributeError):
+            continue
+    start = int(hashlib.sha256(str(target.resolve()).encode("utf-8")).hexdigest(), 16) % PORT_SPAN
+    candidates = [PORT_BASE + (start + offset) % PORT_SPAN for offset in range(PORT_SPAN)]
+    return next((port for port in candidates if port not in taken and port_free(port)), candidates[0])
+
+
+def has_commit(target: Path) -> bool:
+    # Only this folder's own repository: a scaffold inside another repo must not borrow its HEAD.
+    if not (target / ".git").exists():
+        return False
+    try:
+        return subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], cwd=target, capture_output=True, timeout=20).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def scaffold_state(target: Path) -> str:
+    """fresh | partial (a failed `new`, safe to resume) | complete | foreign."""
+    if is_link(target) or (target.exists() and not target.is_dir()):
+        return "foreign"
+    if not target.exists() or not any(target.iterdir()):
+        return "fresh"
+    if (target / INCOMPLETE).is_file():
+        return "partial"
+    if all((target / rel).is_file() for rel in ("default.project.json", "CLAUDE.md", "tools/.moonbrick-version", "tools/check.sh")):
+        return "complete" if has_commit(target) else "partial"
+    return "foreign"
+
+
+def copy_missing(source: str, dest: str):
+    # Resuming never overwrites: a file already in the folder may be the user's.
+    if not os.path.exists(dest):
+        shutil.copy2(source, dest)
+
+
 def new_project(target: Path, name: str):
     if not name.strip() or any(ord(char) < 32 for char in name):
         raise ValueError("project name must be nonempty and contain no control characters")
-    if is_link(target) or (target.exists() and (not target.is_dir() or any(target.iterdir()))):
-        raise ValueError("target must be absent or an empty directory")
+    state = scaffold_state(target)
+    if state == "foreign":
+        raise ValueError("target must be absent, empty, or an unfinished Moonbrick scaffold")
+    if state == "complete":
+        print(f"{target} is already a committed Moonbrick project; nothing to scaffold.")
+        return
+    if state == "partial":
+        print(f"Resuming the unfinished scaffold at {target}; existing files are kept.")
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(KIT / "template", target, dirs_exist_ok=True)
+    marker = target / INCOMPLETE
+    marker.parent.mkdir(exist_ok=True)
+    marker.write_text("new-project did not finish; rerun it to resume.\n", encoding="utf-8")
+    shutil.copytree(KIT / "template", target, dirs_exist_ok=True, copy_function=copy_missing)
     cfg = read_json(target / "default.project.json")
     cfg["name"] = name
+    if "servePort" not in cfg:
+        cfg["servePort"] = pick_port(target)
     write_json(target / "default.project.json", cfg)
     claude = target / "CLAUDE.md"
     claude.write_text(claude.read_text(encoding="utf-8").replace("__PROJECT_NAME__", name), encoding="utf-8", newline="\n")
     sync(target)
+    marker.unlink()
 
 
-def import_config(original: dict, entries: list[str], with_kit: bool) -> dict:
+def game_folders(entries: list[str], stage: Path) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    """Map src/server, src/client and src/shared beside the import unless the place already owns that name."""
+    keep, skipped = {}, []
+    for entry, (child, path) in GAME_FOLDERS.items():
+        root = stage / "src" / entry
+        names = [re.sub(r"\.(server|client)?\.?lua[u]?$|\.model\.json$|\.rbxm[x]?$", "", item.name) for item in root.iterdir()] if root.is_dir() else []
+        if entry not in entries or child in names:
+            skipped.append(path)
+        else:
+            keep[entry] = (child, path)
+    return keep, skipped
+
+
+def import_guidance(skipped: list[str]) -> str:
+    text = ("\n## Imported game\nThis project came from an existing place. `src/<Service>/` mirrors Studio "
+            "(`src/ServerScriptService/`, `src/StarterGui/`, ...): edit imported code where it is. `src/world/` is not "
+            "synced here, because Workspace stays in the original place. `tools/check.sh` fails on any `src/` file Rojo does not map.\n")
+    if skipped:
+        text += "These folders are not mapped, because the place already uses that name or lacks the service; put new code in the matching `src/<Service>/` folder instead: " + ", ".join(f"`{path}/`" for path in skipped) + ".\n"
+    return text
+
+
+def import_config(original: dict, entries: list[str], with_kit: bool, folders: dict[str, tuple[str, str]] | None = None) -> dict:
     cfg = {key: value for key, value in original.items() if key != "tree"}
     tree = {"$className": "DataModel", "$ignoreUnknownInstances": True}
     for entry in entries:
@@ -161,6 +254,11 @@ def import_config(original: dict, entries: list[str], with_kit: bool) -> dict:
             "ServerStorage": {"MCPKit": {"$path": "tools/MCPKit.luau"}, "Tests": {"$path": "tests"}},
         }.items():
             tree.setdefault(service, {"$ignoreUnknownInstances": True}).update(children)
+        for entry, (child, path) in (folders or {}).items():
+            node = tree
+            for segment in entry.split("/"):
+                node = node[segment]
+            node[child] = {"$path": path}
     cfg["tree"] = tree
     return cfg
 
@@ -226,7 +324,10 @@ def import_place(project: Path, place: Path):
         shutil.copytree(project / "src/kit", trial / "src/kit")
         shutil.copytree(project / "tools", trial / "tools")
         shutil.copytree(project / "tests", trial / "tests")
-        write_json(trial / "default.project.json", import_config(original, entries, True))
+        folders, skipped = game_folders(entries, trial)
+        for _, path in folders.values():
+            (trial / path).mkdir(parents=True, exist_ok=True)
+        write_json(trial / "default.project.json", import_config(original, entries, True, folders))
         run("rojo", "sourcemap", "default.project.json", "-o", "sourcemap.json", cwd=trial)
         scanner_spec = importlib.util.spec_from_file_location("moonbrick_scanner", KIT / "scripts/scan-project.py")
         scanner = importlib.util.module_from_spec(scanner_spec)
@@ -242,6 +343,8 @@ def import_place(project: Path, place: Path):
         backup = project / ".moonbrick/backups" / ("import-" + uuid.uuid4().hex)
         backup.mkdir(parents=True)
         (backup / "default.project.json").write_bytes(original_bytes)
+        guide = project / "CLAUDE.md"
+        guide_bytes = guide.read_bytes() if guide.is_file() else None
         moved = []
         displaced = []
         try:
@@ -257,19 +360,29 @@ def import_place(project: Path, place: Path):
                 moved.append((dest, trial / "src" / entry))
             os.replace(trial / "default.project.json", project / "default.project.json")
             os.replace(trial / "import-report.json", project / ".moonbrick/import-report.json")
+            if guide_bytes is not None:
+                with guide.open("ab") as handle:
+                    handle.write(import_guidance(skipped).encode("utf-8"))
         except BaseException:
             for dest, source in reversed(moved):
                 os.replace(dest, source)
             for saved, dest in reversed(displaced):
                 os.replace(saved, dest)
             (project / "default.project.json").write_bytes(original_bytes)
+            if guide_bytes is not None:
+                guide.write_bytes(guide_bytes)
             raise
     print(f"Imported {place.name}; review the Rojo connection diff before accepting. Backup: {backup}")
+    if skipped:
+        print("Not mapped (see CLAUDE.md): " + ", ".join(skipped))
     print("Workspace, Lighting and StarterPlayer settings stay in the original place (not imported). Keep that place when connecting Rojo.")
     print(f"Advisory import scan: {len(report['scripts'])} scripts, {len(report['findings'])} findings; review .moonbrick/import-report.json before play/publish.")
 
 
 def main():
+    # Project names can be any language; a plain `python` on Windows pipes in the ANSI code page.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     new = sub.add_parser("new")

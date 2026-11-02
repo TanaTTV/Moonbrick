@@ -541,7 +541,8 @@ def main():
             expected_sources = Counter(node["source"] for node in imported_baseline.values() if node["class"] in SCRIPT_CLASSES)
             assert extracted_sources == expected_sources, "syncback did not preserve all script file bytes"
             current = managed_snapshot(target)
-            assert all(current.get(path) == digest for path, digest in managed.items()), "scaffold/Kit/managed file changed"
+            # CLAUDE.md gains the "Imported game" section on purpose; the Kit and tools must not change.
+            assert all(current.get(path) == digest for path, digest in managed.items() if path != "CLAUDE.md"), "scaffold/Kit/managed file changed"
             run(["git", "diff", "--cached", "--exit-code"], target)
             cfg = project.read_json(target / "default.project.json")
             assert "Workspace" not in cfg["tree"] and "Lighting" not in cfg["tree"]

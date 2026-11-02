@@ -2,6 +2,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -61,6 +63,62 @@ class ProjectTests(unittest.TestCase):
             project.import_place(self.root, self.place)
         self.assertEqual(before, self.snapshot())
 
+    def test_import_keeps_the_folders_claude_md_names_mapped(self):
+        with patch.object(project, "run", self.fake_rojo):
+            project.import_place(self.root, self.place)
+        tree = project.read_json(self.root / "default.project.json")["tree"]
+        self.assertEqual(tree["ServerScriptService"]["Server"]["$path"], "src/server")
+        self.assertEqual(tree["ReplicatedStorage"]["Shared"]["$path"], "src/shared")
+        self.assertEqual(tree["StarterPlayer"]["StarterPlayerScripts"]["Client"]["$path"], "src/client")
+        self.assertEqual(tree["ServerScriptService"]["$path"], "src/ServerScriptService")
+        guide = (self.root / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("## Imported game", guide)
+        self.assertNotIn("not mapped, because the place already", guide)
+
+    def test_import_skips_a_folder_name_the_place_already_uses(self):
+        def named(*args, cwd):
+            self.fake_rojo(*args, cwd=cwd)
+            if args[1] == "syncback":
+                (cwd / "src/ReplicatedStorage/Shared.luau").write_text("return {}")
+            return ""
+        with patch.object(project, "run", named):
+            project.import_place(self.root, self.place)
+        tree = project.read_json(self.root / "default.project.json")["tree"]
+        self.assertNotIn("Shared", tree["ReplicatedStorage"])
+        self.assertIn("`src/shared/`", (self.root / "CLAUDE.md").read_text(encoding="utf-8"))
+
+    def test_failed_promotion_restores_claude_md(self):
+        before = (self.root / "CLAUDE.md").read_bytes()
+        original = project.Path.open
+        def failed(path, *args, **kwargs):
+            if path.name == "CLAUDE.md" and args and args[0] == "ab":
+                raise OSError("guide write failed")
+            return original(path, *args, **kwargs)
+        with patch.object(project, "run", self.fake_rojo), patch.object(project.Path, "open", failed), self.assertRaises(OSError):
+            project.import_place(self.root, self.place)
+        self.assertEqual((self.root / "CLAUDE.md").read_bytes(), before)
+
+    def test_new_projects_get_distinct_stable_ports(self):
+        other = Path(self.tmp.name) / "game2"
+        project.new_project(other, "two")
+        first = project.read_json(self.root / "default.project.json")["servePort"]
+        second = project.read_json(other / "default.project.json")["servePort"]
+        self.assertNotEqual(first, second)
+        self.assertTrue(project.PORT_BASE <= first < project.PORT_BASE + project.PORT_SPAN)
+        self.assertNotEqual(first, 34872)
+
+    def test_pick_port_skips_a_sibling_and_a_listener(self):
+        target = Path(self.tmp.name) / "fresh"
+        wanted = project.pick_port(target)
+        (Path(self.tmp.name) / "sib").mkdir()
+        (Path(self.tmp.name) / "sib/default.project.json").write_text(json.dumps({"servePort": wanted}))
+        moved = project.pick_port(target)
+        self.assertNotEqual(moved, wanted)
+        with socket.socket() as held:
+            held.bind(("127.0.0.1", moved))
+            self.assertFalse(project.port_free(moved))
+            self.assertNotIn(project.pick_port(target), (wanted, moved))
+
     def test_diagnostic_cannot_traverse_paths(self):
         with self.assertRaisesRegex(RuntimeError, "unexpected"):
             project.missing_entry("The child '../../outside' of Instance 'game' is present only in a project file", list(project.ENTRIES))
@@ -113,6 +171,40 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(game.read_text(), "my code")
         self.assertEqual(managed.read_bytes(), (ROOT / "luau/lib/server/PlayerData.luau").read_bytes())
         self.assertTrue(any(p.read_text() == "local edits" for p in (self.root / ".moonbrick/backups").rglob("PlayerData.luau")))
+
+    def test_interrupted_scaffold_resumes_and_keeps_existing_files(self):
+        target = Path(self.tmp.name) / "partial"
+        (target / ".moonbrick").mkdir(parents=True)
+        (target / project.INCOMPLETE).write_text("x")
+        (target / "notes.txt").write_text("mine")
+        (target / "stylua.toml").write_text("mine too")
+        project.new_project(target, "resumed")
+        self.assertEqual((target / "notes.txt").read_text(), "mine")
+        self.assertEqual((target / "stylua.toml").read_text(), "mine too")
+        self.assertTrue((target / "tools/MCPKit.luau").is_file())
+        self.assertFalse((target / project.INCOMPLETE).exists())
+        self.assertEqual(project.read_json(target / "default.project.json")["name"], "resumed")
+
+    def test_scaffold_without_a_commit_is_partial_and_keeps_its_port(self):
+        before = project.read_json(self.root / "default.project.json")["servePort"]
+        self.assertEqual(project.scaffold_state(self.root), "partial")
+        project.new_project(self.root, "again")
+        self.assertEqual(project.read_json(self.root / "default.project.json")["servePort"], before)
+
+    def test_committed_project_is_left_alone(self):
+        with patch.object(project, "has_commit", return_value=True):
+            self.assertEqual(project.scaffold_state(self.root), "complete")
+            before = self.snapshot()
+            project.new_project(self.root, "other name")
+            self.assertEqual(before, self.snapshot())
+
+    def test_unrelated_folder_is_refused_untouched(self):
+        target = Path(self.tmp.name) / "work"
+        target.mkdir()
+        (target / "default.project.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "unfinished Moonbrick scaffold"):
+            project.new_project(target, "x")
+        self.assertEqual([p.name for p in target.iterdir()], ["default.project.json"])
 
     def link_dir(self, link: Path, target: Path):
         try:
@@ -197,6 +289,59 @@ class ProjectTests(unittest.TestCase):
         with patch.object(project, "run", self.fake_rojo), patch.object(project.os, "replace", failed), self.assertRaises(OSError):
             project.import_place(self.root, self.place)
         self.assertEqual(before, self.snapshot())
+
+
+BASH = os.environ.get("MOONBRICK_BASH") or (r"C:\Program Files\Git\bin\bash.exe" if os.name == "nt" else shutil.which("bash"))
+
+
+class NewProjectScriptTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.home = self.base / "home"
+        self.home.mkdir()
+        self.env = dict(os.environ, HOME=self.home.as_posix(), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t.invalid", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t.invalid")
+        self.env.pop("PYTHONUTF8", None)
+
+    def script(self, *args, env=None):
+        return subprocess.run([BASH, (ROOT / "scripts/new-project.sh").as_posix(), *args], cwd=self.base, env=env or self.env, capture_output=True, text=True, encoding="utf-8", timeout=120)
+
+    def test_quoted_tilde_expands_to_home(self):
+        result = self.script("~/RobloxProjects/g1", "g1", "--no-tools")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.home / "RobloxProjects/g1/default.project.json").is_file())
+        self.assertFalse((self.base / "~").exists())
+
+    def test_failed_commit_can_be_retried_with_the_same_command(self):
+        # A pre-commit hook stands in for any git failure after the files are written.
+        hooks = self.base / "hooks"
+        hooks.mkdir()
+        (hooks / "pre-commit").write_text("#!/bin/sh\nexit 1\n", newline="\n")
+        (hooks / "pre-commit").chmod(0o755)
+        broken = dict(self.env, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.hooksPath", GIT_CONFIG_VALUE_0=hooks.as_posix())
+        first = self.script("game", "game", "--no-tools", env=broken)
+        self.assertNotEqual(first.returncode, 0)
+        self.assertIn("rerun this same command", first.stderr)
+        second = self.script("game", "game", "--no-tools")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("Resuming", second.stdout)
+        log = subprocess.run(["git", "log", "--oneline"], cwd=self.base / "game", capture_output=True, text=True)
+        self.assertEqual(len(log.stdout.splitlines()), 1)
+
+    def test_rerun_after_success_stages_nothing(self):
+        self.assertEqual(self.script("game", "game", "--no-tools").returncode, 0)
+        (self.base / "game/src/server/Work.luau").write_text("return {}\n")
+        again = self.script("game", "game", "--no-tools")
+        self.assertEqual(again.returncode, 0, again.stderr)
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=self.base / "game", capture_output=True, text=True).stdout
+        self.assertIn("?? src/server/Work.luau", status)
+
+    def test_non_ascii_name_survives_a_legacy_console_encoding(self):
+        env = dict(self.env, PYTHONUTF8="0", PYTHONIOENCODING="cp1252")
+        target = self.base / "script"
+        result = subprocess.run(["python" if shutil.which("python") else "python3", str(ROOT / "scripts/project.py"), "new", str(target), "\u0e40\u0e01\u0e21"], env=env, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

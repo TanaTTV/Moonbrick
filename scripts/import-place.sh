@@ -4,4 +4,6 @@ set -euo pipefail
 kit="$(cd "$(dirname "$0")/.." && pwd)"
 source "$kit/scripts/python.sh"
 export PATH="$HOME/.rokit/bin:$PATH"
-moonbrick_python "$kit/scripts/project.py" import "${1:?usage: import-place.sh <fresh-project> <place-file>}" "${2:?place file required}"
+project="$(moonbrick_path "${1:?usage: import-place.sh <fresh-project> <place-file>}")"
+place="$(moonbrick_path "${2:?place file required}")"
+moonbrick_python "$kit/scripts/project.py" import "$project" "$place"

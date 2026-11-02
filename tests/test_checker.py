@@ -24,7 +24,7 @@ class CheckerTests(unittest.TestCase):
         self.bin = self.project / "bin"
         self.bin.mkdir()
         self.env = dict(os.environ, HOME=self.project.as_posix(), PATH=self.bin.as_posix() + os.pathsep + os.environ["PATH"])
-        self.tool("rojo", 'while [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then shift; echo "{}" >"$1"; fi; shift; done')
+        self.tool("rojo", """while [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then shift; echo '{"filePaths":["src/Main.luau"]}' >"$1"; fi; shift; done""")
         self.tool("luau-lsp", "exit 0")
         self.tool("selene", "exit 0")
         self.tool("stylua", "exit 0")
@@ -46,6 +46,16 @@ class CheckerTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(result.stdout.strip(), "OK")
+
+    def test_file_rojo_does_not_map_fails_instead_of_ok(self):
+        (self.project / "src/Lost.server.luau").write_text("return {}\n")
+        result = self.run_check()
+        self.assertFailed(result)
+        self.assertIn("src/Lost.server.luau: not in default.project.json", result.stdout)
+
+    def test_windows_separators_in_the_map_still_match(self):
+        self.tool("rojo", r"""while [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then shift; printf '%s' '{"filePaths":["src\Main.luau"]}' >"$1"; fi; shift; done""")
+        self.assertEqual(self.run_check().stdout.strip(), "OK")
 
     def test_silent_analyzer_failure(self):
         self.tool("luau-lsp", "exit 42")

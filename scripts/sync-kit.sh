@@ -3,4 +3,5 @@
 set -euo pipefail
 kit="$(cd "$(dirname "$0")/.." && pwd)"
 source "$kit/scripts/python.sh"
-moonbrick_python "$kit/scripts/project.py" sync "${1:?usage: sync-kit.sh <project-dir>}"
+project="$(moonbrick_path "${1:?usage: sync-kit.sh <project-dir>}")"
+moonbrick_python "$kit/scripts/project.py" sync "$project"
