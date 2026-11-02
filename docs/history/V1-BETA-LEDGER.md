@@ -1,5 +1,7 @@
 # V1 beta acceptance ledger
 
+> Historical (1.0.0-beta.1). Stable 1.0 gates and evidence are in [acceptance/v1-stable](../../acceptance/v1-stable/).
+
 Integration branch: `dev/v1-beta` (from `main` @ `dd513cb`). Worker branches: `dev/v1-beta-<topic>`; the orchestrator reviews and merges them here. Nothing is published, released or merged to `main` without owner approval.
 
 Status: PASS · FAIL · BLOCKED · NOT TESTED · IN PROGRESS. Evidence kinds: **host** (Python fixtures), **headless** (Luau + mock services), **Studio** (real engine, disposable place), **multiplayer** (Studio Local Server + clients), **live** (published test experience / real DataStore).
@@ -25,4 +27,4 @@ Status: PASS · FAIL · BLOCKED · NOT TESTED · IN PROGRESS. Evidence kinds: **
 ## Known limitations found during V1 beta
 
 - Moonbrick skills are not invoked automatically for a terse, constraint-heavy headless prompt; users should start with `/moonbrick:new` (documented in README). Measured in `docs/BENCHMARK.md`.
-- Explicit Moonbrick use costs more tokens on a small task (≈1.9× median) in exchange for session-locked saves and validated remotes; no token saving is claimed.
+- Explicit Moonbrick use costs more tokens on a small task (≈1.9× median) in exchange for session-locked saves and validated remotes; no token saving is claimed. *Superseded in 1.0:* with the API card and recipes, a same-batch run cost the same as the baseline ($0.217 vs $0.220 median); see [BENCHMARK-SUMMARY](../BENCHMARK-SUMMARY.md).

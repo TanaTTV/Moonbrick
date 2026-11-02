@@ -1,4 +1,4 @@
-# Measured workflow evidence
+# Studio tree-output benchmark
 
 Raw results: [2026-10-13-tree.json](benchmarks/2026-10-13-tree.json).
 
@@ -15,5 +15,3 @@ Compact output was **89.2% smaller by character count**, but its median tool lat
 The private helper setup was 20,475 code characters and was excluded from warm-call timings; installed Moonbrick projects require their already-synced helper instead. The fixture is synthetic, one machine, five samples, and not a full game-development workload. Claude token counts, model reasoning time, API/subscription dollars and gameplay construction speed were **not measured**. Character savings are not exact token or cost savings.
 
 Reproduce: `python scripts/benchmark.py .artifacts/benchmark`, run `prepare.luau` in a chosen Studio datamodel, alternate the two calls using `fixture.json`, record all samples and failures, then execute `cleanup.luau` in a `finally` step. Preserve startup/cache costs separately. Do not benchmark a user's active game hierarchy or stop their playtest to make comparisons.
-
-Before V1, repeat on realistic import/build/test/review tasks with equivalent acceptance outcomes, warm/cold setup, exact provider token accounting, at least ten repetitions, and Windows/macOS. Report both failures and time/output/cost distributions.

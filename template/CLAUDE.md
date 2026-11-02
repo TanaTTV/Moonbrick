@@ -1,6 +1,6 @@
 # __PROJECT_NAME__ (Moonbrick project)
 
-Roblox game built with Rojo. Code and generated world objects live on disk and sync into Studio. Use the `moonbrick:studio` skill for anything touching Studio, `moonbrick:game-systems` before writing gameplay code, and `moonbrick:game-design` for design work.
+Roblox game built with Rojo. Code and generated world objects live on disk and sync into Studio. Use the `moonbrick:studio` skill for anything touching Studio, `moonbrick:game-systems` before writing gameplay code, and `moonbrick:game-design` for design work. After a feature: `/moonbrick:playtest` to verify it in Studio, `/moonbrick:review` for a quality and design pass, `/moonbrick:ship` before publishing.
 
 ## Where things go
 | Folder | In Studio | For |

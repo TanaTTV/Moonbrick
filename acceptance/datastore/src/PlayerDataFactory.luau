@@ -34,6 +34,9 @@ export type Config = {
 	studioStore: ("memory" | "live")?, -- default memory; never point Studio at production stores
 	onLoadFailed: ((Player, string) -> ())?, -- default: kick with a friendly message
 	onSessionLost: ((Player, string) -> ())?, -- default: kick rather than allow unsaved play
+	-- Live data became unsaveable (e.g. NaN, invalid UTF-8, mixed keys) so autosaves stopped. Default: kick,
+	-- which releases the lock and keeps the last good save instead of silently losing everything after it.
+	onSaveInvalid: ((Player, string) -> ())?,
 	-- Saved data that fails validation is never loaded or overwritten by default (the player gets
 	-- onLoadFailed). To recover, return replacement data from a copy, e.g. `onInvalidData = PlayerData.sanitize`.
 	-- Must not yield. Return nil to keep refusing. The original is kept in the record's `backups` list.
@@ -432,10 +435,53 @@ local sessions: { [Player]: Session } = {}
 local failed: { [Player]: boolean } = {}
 local closing = false
 local activeOperations = 0
-local loadedEvent = Instance.new("BindableEvent")
 
--- Fires (player, data) when a player's data has loaded.
-PlayerData.loaded = loadedEvent.Event
+export type Connection = { Connected: boolean, Disconnect: (self: Connection) -> () }
+type Listener = (Player, { [string]: any }) -> ()
+local listeners: { [Connection]: Listener } = {}
+
+local function connect(listener: Listener, once: boolean?): Connection
+	local connection: Connection = {
+		Connected = true,
+		Disconnect = function(self: Connection)
+			self.Connected = false
+			listeners[self] = nil
+		end,
+	}
+	listeners[connection] = if once
+		then function(player, data)
+			connection:Disconnect()
+			listener(player, data)
+		end
+		else listener
+	return connection
+end
+
+-- Fires (player, data) when a player's data has loaded. `data` is the live table (a BindableEvent would
+-- pass a copy, so changes made in a listener would never be saved).
+PlayerData.loaded = {
+	Connect = function(_self: any, listener: Listener): Connection
+		return connect(listener)
+	end,
+	Once = function(_self: any, listener: Listener): Connection
+		return connect(listener, true)
+	end,
+	Wait = function(_self: any): (Player, { [string]: any })
+		local thread = coroutine.running()
+		connect(function(player, data)
+			task.spawn(thread, player, data)
+		end, true)
+		return coroutine.yield()
+	end,
+}
+
+local function fireLoaded(player: Player, data: { [string]: any })
+	for connection, listener in table.clone(listeners) do
+		if connection.Connected then
+			task.spawn(listener, player, data)
+		end
+	end
+end
 
 -- Never switch an acquired persistent session to memory after a transient provider failure.
 local function dataStore(name: string): Store
@@ -526,7 +572,7 @@ local function onJoin(player: Player)
 		return
 	end
 	buildLeaderstats(player, session.data :: any)
-	loadedEvent:Fire(player, session.data)
+	fireLoaded(player, session.data :: any)
 end
 
 local function tracked(fn: (Player) -> (), player: Player)
@@ -555,6 +601,29 @@ local function sessionLost(player: Player, session: Session, reason: string)
 		callback(player, reason)
 	else
 		player:Kick("Your data session ended. Please rejoin to keep your progress safe.")
+	end
+end
+
+-- A non-final save failed: either the lock was lost, or the live data can no longer be saved. Invalid data
+-- would otherwise fail every autosave (with only a warning) until the player leaves, losing all of it.
+local function saveFailed(player: Player, session: Session, reason: string)
+	if session.released then
+		sessionLost(player, session, reason)
+		return
+	end
+	local valid, invalid = pcall(function()
+		validate(session.data)
+		return true
+	end)
+	if valid or sessions[player] ~= session or session.closing or player.Parent ~= Players then
+		return
+	end
+	warn(`PlayerData: {player.Name}'s data can't be saved ({invalid}); fix the code that wrote it`)
+	local callback = config and config.onSaveInvalid
+	if callback then
+		callback(player, tostring(invalid))
+	else
+		player:Kick("Your progress couldn't be saved because of a game error. Rejoin to continue from your last save.")
 	end
 end
 
@@ -605,7 +674,7 @@ function PlayerData.start(cfg: Config)
 						local ok, err = session:save(false)
 						if not ok then
 							warn(`PlayerData: autosave for {player.Name} failed: {err}`)
-							sessionLost(player, session, err or "session ownership lost")
+							saveFailed(player, session, err or "session ownership lost")
 						end
 					end)
 				end
@@ -761,7 +830,7 @@ function PlayerData.save(player: Player): boolean
 	local ok, err = session:save(false)
 	if not ok then
 		warn(`PlayerData.save({player.Name}) failed: {err}`)
-		sessionLost(player, session, err or "session ownership lost")
+		saveFailed(player, session, err or "session ownership lost")
 	end
 	return ok
 end

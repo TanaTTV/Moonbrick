@@ -18,5 +18,20 @@ body:
     id: env
     attributes:
       label: Environment
-      placeholder: "Windows 11 / macOS 15, Moonbrick 0.1.0, Rojo 7.7.1"
+      description: OS, Moonbrick version (`claude plugin list`), Rojo version.
+      placeholder: "Windows 11 / macOS 15, Moonbrick 1.0.0, Rojo 7.7.1"
+    validations: { required: true }
+  - type: input
+    id: studio
+    attributes:
+      label: Roblox Studio version
+      description: Studio → File → About Roblox Studio.
+      placeholder: "0.743.0.7431133"
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Marketplace (/plugin marketplace add TanaTTV/Moonbrick)
+        - Local checkout (claude plugin marketplace add <path>)
     validations: { required: true }

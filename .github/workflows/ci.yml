@@ -1,6 +1,7 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -21,11 +22,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - name: Host regression tests
@@ -59,10 +60,9 @@ jobs:
         run: |
           export PATH="$HOME/.rokit/bin:$PATH"
           cd acceptance/datastore
-          curl -fsSL --connect-timeout 10 --max-time 60 \
-            https://luau-lsp.pages.dev/type-definitions/globalTypes.PluginSecurity.d.luau \
-            -o globalTypes.d.luau
-          test -s globalTypes.d.luau
+          curl -fsSL --connect-timeout 10 --max-time 60 -o globalTypes.d.luau \
+            https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/0382dc76ca9b73df3c8e7c9cd85a8dd493cbd0ae/scripts/globalTypes.PluginSecurity.d.luau
+          echo "e441a5cefd41d05649e14659b5bc23147bb1637b91ff86b04cbf1f45d8a4573c  globalTypes.d.luau" | sha256sum -c -
           rojo sourcemap default.project.json -o sourcemap.json
           # Some analyzer diagnostics can accompany exit 0; require empty source output too.
           luau_status=0
@@ -114,11 +114,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - name: Isolated plugin install and upgrade acceptance
@@ -128,14 +128,33 @@ jobs:
           npm install --global @anthropic-ai/claude-code@2.1.296
           python scripts/test-install.py
   plugin:
+    # The pinned version gates merges; latest is an early warning for manifest/hook format changes.
+    strategy:
+      fail-fast: false
+      matrix:
+        claude: ['2.1.296', latest]
+    continue-on-error: ${{ matrix.claude == 'latest' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate Claude Code plugin and components
         run: |
-          npx --yes @anthropic-ai/claude-code@2.1.296 plugin validate --strict .
-          npx --yes @anthropic-ai/claude-code@2.1.296 plugin validate --strict .claude-plugin/plugin.json
-          npx --yes @anthropic-ai/claude-code@2.1.296 plugin validate --strict skills
+          npx --yes "@anthropic-ai/claude-code@${{ matrix.claude }}" plugin validate --strict .
+          npx --yes "@anthropic-ai/claude-code@${{ matrix.claude }}" plugin validate --strict .claude-plugin/plugin.json
+          npx --yes "@anthropic-ai/claude-code@${{ matrix.claude }}" plugin validate --strict skills
+  python-minimum:
+    # Project scripts declare Python 3.10+; catch newer-only syntax and library use.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.10'
+      - name: Host regression tests on Python 3.10
+        run: python -m unittest discover -s tests -v
