@@ -30,6 +30,9 @@ export type Options = {
 	texture: string?, -- particle texture (default VFX.Textures.Sparkle)
 }
 
+-- Presentation defaults a game can restyle (V1 values by default).
+VFX.Style = { titleFont = Enum.Font.FredokaOne }
+
 local GOLD = Color3.fromRGB(255, 200, 40)
 local PURPLE = Color3.fromRGB(170, 90, 255)
 
@@ -353,7 +356,7 @@ function VFX.title(text: string, opts: Options?)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
+	label.Font = VFX.Style.titleFont
 	label.TextColor3 = o.color or GOLD
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 6

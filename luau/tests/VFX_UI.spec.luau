@@ -59,6 +59,34 @@ return function(t: any)
 		holder:Destroy()
 	end)
 
+	t.test("theme defaults keep the V1 look; fills and useTheme restyle without breaking buttons", function()
+		t.eq(UI.Theme.font, Enum.Font.FredokaOne)
+		t.eq(UI.Theme.buttonFill, "gradient")
+		t.eq(UI.Theme.buttonStroke, Color3.new(1, 1, 1))
+		t.eq(VFX.Style.titleFont, Enum.Font.FredokaOne)
+		local saved = table.clone(UI.Theme)
+		UI.useTheme({ buttonFill = "flat", displayFont = Enum.Font.Garamond })
+		local flat = UI.button({ text = "A" })
+		t.eq(flat:FindFirstChildOfClass("UIGradient"), nil, "flat buttons have no gradient")
+		t.eq(flat.BackgroundColor3, UI.Theme.primary)
+		local panel = UI.panel({ size = UDim2.fromOffset(100, 100), title = "T" })
+		t.eq((panel:FindFirstChild("Title") :: TextLabel).Font, Enum.Font.Garamond)
+		UI.useTheme({ buttonFill = "outline" })
+		local outline = UI.button({ text = "B", style = "danger" })
+		t.eq(outline.TextColor3, UI.Theme.danger)
+		t.ok(outline:FindFirstChildOfClass("UISizeConstraint"), "touch minimum kept")
+		t.fails(function()
+			UI.useTheme({ notAThing = 1 })
+		end, "unknown key")
+		for key, value in saved do
+			(UI.Theme :: any)[key] = value
+		end
+		UI.Theme.displayFont = nil
+		flat:Destroy()
+		outline:Destroy()
+		panel:Destroy()
+	end)
+
 	t.test("panel lays out title first", function()
 		local p = UI.panel({ size = UDim2.fromOffset(300, 200), title = "Shop" })
 		local title = p:FindFirstChild("Title") :: TextLabel

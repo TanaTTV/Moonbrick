@@ -15,7 +15,7 @@
       ],
       "notes": "Portrait, landscape, notch, tablet; native touch collection and HUD.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "device-gamepad",
@@ -36,7 +36,7 @@
       ],
       "notes": "Controller or physical gamepad X collection and movement; PC E regression. 2026-10-15: keyboard E regression passed (+1); synthetic ButtonX awarded +1 but LastInputType stayed Keyboard, so a real controller is still required.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "device-physical-performance",
@@ -51,7 +51,7 @@
       ],
       "notes": "Physical mobile target, FPS/frame time, prompts, low/high graphics.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "streaming-streamout",
@@ -72,7 +72,7 @@
       ],
       "notes": "Extended map; actual stream-out/in, late crystal state, 2-player authority. 2026-10-18 solo: real stream-out/in, HUD without crystals, late claimed and reset state, distant/duplicate/teleport denial all passed; 2-player Local Server part still required.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "blender-studio-static-pbr",
@@ -126,7 +126,7 @@
       ],
       "notes": "Real Studio server stop, BindToClose output, fresh server restart verification.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "datastore-natural-lock-expiry",
@@ -141,7 +141,7 @@
       ],
       "notes": "Wait >=601 real seconds after fresh lock before stale-verify.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "datastore-independent-servers",
@@ -156,7 +156,7 @@
       ],
       "notes": "Two independent Studio server processes, same disposable universe and run ID.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "datastore-provider-failures",
@@ -177,7 +177,7 @@
       ],
       "notes": "Real provider throttling/outage behavior, or an explicit evidence-based owner waiver; do not induce production load. 2026-10-18: injected outages during final saves and shutdown retried and stayed bounded (see report); beta live suite observed real budgets with injected throttles. Real provider failure is still unobserved, so this needs an owner waiver.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     },
     {
       "id": "datastore-forced-disconnect",
@@ -205,7 +205,7 @@
       ],
       "notes": "Fresh interactive Claude session and /reload-plugins; prove commands and hook from installed beta.",
       "approved_by": "TanaTTV (repository owner), 2026-10-19",
-      "reason": "Deferred to v1.1 by the owner; see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
+      "reason": "Deferred to v1.2 by the owner (approved 2026-10-19 for v1.1, moved 2026-10-26 when v1.1 shipped as a beta); see acceptance/v1-stable/WAIVERS.md for the evidence, the missing check and the risk. Listed as a known limitation in the 1.0.0 release notes."
     }
   ]
 }
