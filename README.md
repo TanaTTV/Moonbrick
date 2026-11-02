@@ -49,7 +49,7 @@ AI can write Luau, but Roblox development with AI usually goes like this: slow t
 | Claude reads the whole library to learn it | A generated **15 KB API card** and **checked recipes** ship with every project |
 | "It works" = done | **Design-first**: reference images, drawn textures, screenshot review |
 
-**What it costs:** in a same-batch benchmark of the same small task, Moonbrick runs cost the same as plain Claude Code ($0.217 vs $0.220 median), finished about **23% faster**, and every one used session-locked saves and validated remotes, which the plain runs didn't. One task and three runs per side, so read the [benchmark](docs/BENCHMARK.md) before quoting it.
+**What it costs:** in a same-batch benchmark of the same small task, Moonbrick runs cost the same as plain Claude Code ($0.217 vs $0.220 median), finished about **23% faster**, and every one used session-locked saves and validated remotes, which the plain runs didn't. One task and three runs per side, so read the [benchmark](docs/BENCHMARK-SUMMARY.md) before quoting it.
 
 <a id="install"></a>
 
@@ -79,7 +79,7 @@ Then start your first game:
 /moonbrick:new my-game
 ```
 
-The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) with pinned Rojo, luau-lsp, Selene and StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, review the connection diff, and ask for what you want ("add a coin shop", "make the ability feel punchier"). Start with the command or say "use Moonbrick": for a terse "make a Roblox game", Claude didn't pick up the skills on its own in our benchmark.
+The first project installs checksum-verified [Rokit](https://github.com/rojo-rbx/rokit) with pinned Rojo, luau-lsp, Selene and StyLua, plus the Rojo Studio plugin. Open Studio → Plugins → **Rojo** → **Connect**, review the connection diff, and ask for what you want ("add a coin shop", "make the ability feel punchier"). Start with the command or say "use Moonbrick": for a terse "make a Roblox game", Claude didn't pick up the skills on its own in our benchmark. If something doesn't connect, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
 <details>
 <summary><b>Upgrading from 0.1 or a beta</b></summary>
@@ -106,11 +106,16 @@ Restart Claude Code or run `/reload-plugins`. Updating the plugin does not touch
 | `/moonbrick:update` | Update a project's bundled Moonbrick code to the installed version. |
 | `/moonbrick:assets` | Optional Blender workflow: shared art style and budgets, FBX export, and the exact Studio import settings for meshes, PBR and rigs. |
 
+`import`, `ship` and `update` run only when you type them. The others also load on their own when relevant.
+
 ### Skills (load automatically when relevant)
 
 - **`studio`**: the fast, token-efficient way to drive Roblox Studio, plus hard-won gotchas (new avatar joints, flipbook quirks, edit-mode require caching…).
 - **`game-systems`**: server authority, exploit-proof remotes, data saving, and pointers to the project's API card and recipes.
 - **`game-design`**: design docs, game feel ("juice"), first-time experience, mobile/console support, visual review, fair monetization.
+- **`new`**, **`playtest`**, **`review`**, **`assets`**: the commands above, picked up when a request matches.
+
+Every skill can also be run directly as `/moonbrick:<name>`.
 
 ### In every project
 
@@ -202,7 +207,7 @@ Good-looking games come from art, not code:
 
 Every change runs host tests, a headless Luau suite (PlayerData, Net and gameplay libraries), strict analysis of the Kit, fresh-scaffold builds of the template and recipes, Rojo import fidelity, and an isolated plugin install/upgrade, on Windows, macOS and Linux.
 
-Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/V1-BETA-LEDGER.md)).
+Beyond CI, the [V1 stable ledger](acceptance/v1-stable/) records what was checked in Studio and on live servers, with evidence and what was *not* covered: Blender mesh/PBR/rig import, terrain import, streaming in and out, and player disconnects and server shutdowns during loads and saves. Live DataStore session locking passed 7/7 in a private test experience during the beta ([ledger](docs/history/V1-BETA-LEDGER.md)).
 
 ## 🗺 Roadmap
 

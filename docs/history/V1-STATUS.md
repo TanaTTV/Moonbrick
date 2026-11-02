@@ -69,7 +69,7 @@ The Studio test bundle never parents instances to the user's place, installs gam
 - [ ] Blender asset Studio import/rendering acceptance; local static/rig/animation/PBR native round-trips passed, including budgets and failure cleanup. FBX bone/clip mapping and SurfaceAppearance rendering in Roblox remain unvalidated.
 - [ ] Validate rendered example gameplay, touch/gamepad, server authority under adversarial network requests and target-device performance.
 - [x] Controlled tree benchmark: 22,883 vs 2,480 output chars; medians 34 vs 81 ms. Compact output reduced characters but increased call latency. Exact Claude tokens/cost were not measured.
-- [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting: [confined Claude coin-pickup harness/report](BENCHMARK.md) prepared; real-tool grader fixture passed, provider runs blocked by the shared-quota guard pending approval. No token/cost/efficiency or baseline plugin-isolation result is claimed.
+- [ ] Broader equivalent-outcome game-development benchmark and exact provider token accounting: [confined Claude coin-pickup harness/report](../BENCHMARK.md) prepared; real-tool grader fixture passed, provider runs blocked by the shared-quota guard pending approval. No token/cost/efficiency or baseline plugin-isolation result is claimed.
 - [ ] Approval for release version/tag, merge and publication.
 
 ## PR #1 QA and stability follow-ups (2026-10-13)
@@ -86,7 +86,7 @@ Evidence: host 35, headless 43, Studio 54 specs; adversarial client exploits rej
 ## Next phase: open V1 release requirements
 
 Not blockers for PR #1; all must be closed (or explicitly waived) before tagging V1:
-1. **Real DataStore acceptance** in a separately published *test* experience (never production keys): two servers contending for one key, forced disconnect, throttling/outage, shutdown during load/save, `BindToClose` under real shutdown, restart round-trip, and an `onInvalidData` recovery against a real record. Prepared harness/runbook: [acceptance/datastore](../acceptance/datastore/README.md); live runs require owner approval and remain pending.
+1. **Real DataStore acceptance** in a separately published *test* experience (never production keys): two servers contending for one key, forced disconnect, throttling/outage, shutdown during load/save, `BindToClose` under real shutdown, restart round-trip, and an `onInvalidData` recovery against a real record. Prepared harness/runbook: [acceptance/datastore](../../acceptance/datastore/README.md); live runs require owner approval and remain pending.
 2. **Touch, gamepad and small-screen** check of the Crystal Rush HUD and prompts (Device Emulator), plus target-device performance.
 3. **Fresh install**: empty tool caches, plugin install/reload from the marketplace; update the user's installed 0.1 copy and re-test skills from the installed copy.
 4. **Crystal Rush polish**: enable `StreamingEnabled`; art pass so crystals read as amethyst (currently bloom to white).

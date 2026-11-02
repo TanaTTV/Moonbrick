@@ -5,7 +5,7 @@ description: Fast, token-efficient way to work with Roblox Studio through the St
 
 # Working with Roblox Studio fast
 
-Optimize **fewer calls, shorter code and bounded output**. `docs/BENCHMARKS.md` records a controlled tree benchmark: output shrank, but the compact call was slower. Do not infer universal latency or token-cost savings. Concurrent calls can run in parallel except in the Client datamodel; serialize dependent operations.
+Optimize **fewer calls, shorter code and bounded output**. `docs/BENCHMARK-STUDIO-TREE.md` records a controlled tree benchmark: output shrank, but the compact call was slower. Do not infer universal latency or token-cost savings. Concurrent calls can run in parallel except in the Client datamodel; serialize dependent operations.
 
 ## Session start (2 calls max)
 1. `list_roblox_studios` once and `get_studio_state` before choosing Edit/Server/Client; reuse the ID and refresh state after a mode mismatch. Never stop another active playtest without authorization.

@@ -39,6 +39,12 @@ class DevServerTests(unittest.TestCase):
                 (root / "default.project.json").write_text(json.dumps({"servePort": value}))
                 with self.subTest(value=value), self.assertRaises(ValueError): server.ensure(root)
 
+    def test_non_object_project_file_is_a_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "default.project.json").write_text("[]")
+            with self.assertRaisesRegex(ValueError, "JSON object"): server.ensure(root)
+
     def test_same_name_startup_race_cannot_claim_foreign_session(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
