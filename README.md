@@ -122,7 +122,7 @@ Restart Claude Code or run `/reload-plugins`. Updating the plugin does not touch
 ### In every project
 
 - **`tools/KIT_API.md`**: every Kit function with exact signatures, generated from the source (about 15 KB instead of 65 KB of code), so Claude reads less and guesses nothing.
-- **`tools/recipes/`**: copy-ready, type-checked features: saved data, coin pickups, a Q / X / touch ability with cooldown and effects, and a shop. CI drops each into a fresh project and builds it.
+- **`tools/recipes/`**: copy-ready, type-checked features: saved data, coin pickups, a Q / X / touch ability with cooldown and effects, a shop, checkpoints, named zones, a full round loop and an obby. CI drops each into a fresh project and builds it.
 - **`tools/check.sh`**: strict types + lint in one command; errors stay in order and are capped so one broken file can't flood a session.
 
 ### MCPKit (inside Studio)
@@ -136,6 +136,8 @@ K.record("ui", fn) ; K.results("ui")   -- capture what happened, frame by frame
 K.logs()                               -- only warnings/errors since the mark
 K.audit()                              -- deprecated APIs, unvalidated remotes, console-unfriendly input
 K.toModelJson("Workspace.Map")         -- export Studio-built objects to Rojo files
+K.cam(at, look) ; K.freeze()           -- hold a shot and freeze effects for a screenshot
+K.tour("map", stops)                   -- walk review viewpoints one capture at a time
 ```
 
 ## 🔭 How it works
@@ -173,7 +175,7 @@ Copied into every project under `src/kit/`, so your game never depends on the pl
 | Library | What it gives you |
 |---|---|
 | **VFX** | One-call effects: shockwave, energy sphere, light pillar, bursts, auras, glows, highlights, camera shake, flash, FOV punch, colour-grade spikes, title slams |
-| **UI** | Themed buttons, panels, labels and toasts with hover/press/pulse/pop animation, a 48 px touch minimum and gamepad support. Restyle everything from one theme table. |
+| **UI** | Themed buttons, panels, labels and toasts with hover/press/pulse/pop animation, a 48 px touch minimum and gamepad support, plus a safe-area HUD root, anchors, scaling, bars, tabs, modals, scroll lists and grids. Restyle everything from one theme table. |
 | **Net** | Remotes with per-argument validation (rejects wrong types, NaN/∞, extra args) and per-player rate limits |
 | **PlayerData** | Session-locked saves, retries with backoff, autosave, save on leave and shutdown, template reconcile, nonyielding transactions and a memory-only Studio default |
 | **Cooldown / Round / Economy** | Server cooldown gates, a deterministic multiplayer round controller, and validated in-game currency/purchase rules |
@@ -181,6 +183,9 @@ Copied into every project under `src/kit/`, so your game never depends on the pl
 | **Fx** | Layered effects (particles, meshes, beams, lights, sound, camera, debris) on one scheduler, with pooling, quality levels, markers and hitstop |
 | **Motion / Pose** | Easing, keyframes and springs; procedural R15/R6 poses and short clips with markers |
 | **Audio / Tex / Geo** | Sound cues and groups; effect textures; procedural meshes (lathe, torus, tube, extrude) built on clients |
+| **Scene** | A place's look from `art.json` (lighting, atmosphere, sky, grade), blended zones and terrain helpers. Nothing applies until a script calls it |
+| **Scatter / GeoShapes** | Seeded prop placement with raycasts, slopes and avoid areas; ten built-in low-poly props |
+| **Camera** | Follow, top-down and shoulder rigs, and cutscene paths |
 
 ```lua
 -- a secure purchase in a few lines

@@ -54,13 +54,17 @@ specific artwork, and it won't commit someone else's image to your repo.
 
 | Module | Use it for | Notes |
 |---|---|---|
-| `Fx` | Layered effects: particles, meshes (ball, ring, torus, shard…), beams, lights, sounds, camera (shake, FOV, flash, grade), debris, events | One shared scheduler; pooled; `Low`/`Medium`/`High` quality from the player's graphics setting; markers (`handle:on`), hitstop (`handle:freeze`), time scale. Extends the V1 `VFX` API, which still works unchanged. |
+| `Fx` | Layered effects: particles, meshes (ball, ring, torus, shard…), beams, lights, sounds, camera (shake, FOV, flash, grade), debris, events; `Fx.ambience` for lasting dust, fog and fireflies | One shared scheduler; pooled; `Low`/`Medium`/`High` quality from the player's graphics setting; markers (`handle:on`), hitstop (`handle:freeze`), time scale. Extends the V1 `VFX` API, which still works unchanged. |
 | `Motion` | Easing curves, keyframes, springs, tweens | Named eases (`backOut`, `anticipate`, `expoIn`…), sub-stepped springs. |
 | `Pose` | Procedural R15/R6 poses and short clips with markers, blending, rig checks | Plays via `Transform`; also wraps `Animator` tracks and their markers. |
 | `Audio` | Roblox-native sounds, groups, positional cues, pitch variation, loops | Placeholder sounds from `scripts/sfx.py` (synthesised locally, no licensing questions). |
 | `Tex` | Effect textures (glow, ring, spark, star, smoke flipbooks…) | `scripts/fxtex.py` renders matching PNGs. |
 | `Geo` | Procedural meshes: lathe, torus, tube, extrude, sphere, vertex colours; "spots" dressed on clients | Props without Blender or uploads. |
-| `UI` | Themed panels, buttons, labels | `UI.useTheme` tokens: fonts, corners, button fill (gradient/flat/outline), panel surface, outlines. V1 defaults unchanged. |
+| `UI` | Themed panels, buttons, labels; safe-area HUD, anchors, scaling, bars, tabs, modals, scroll, grids | `UI.useTheme` tokens: fonts, corners, button fill (gradient/flat/outline), panel surface, outlines. V1 defaults unchanged. |
+| `Scene` | Lighting, atmosphere, sky and grade from `art.json`; blended zones; terrain sculpt and paint | Applied only when a script calls it (`ArtStyle.applyScene()`). |
+| `Scatter` | Seeded placement over terrain or parts, with slope limits and avoid areas | Same seed, same layout. |
+| `GeoShapes` | Ten built-in low-poly props, from rocks to barrels | Spots save and replicate; clients build the meshes. |
+| `Camera` | Follow, top-down and shoulder rigs, cutscene paths | Client-side; one rig at a time. |
 
 ## Limits, honestly
 

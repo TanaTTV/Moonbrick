@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 (unreleased)
+World tools, a route for creating 3D models, and design guidance that tells Claude how, not just what. **The nine 1.0 waivers are still open and move to 1.2.** No phone has been measured, and the Blender and effect loops below have not yet been run end to end on a real project.
+- **World:** `Scene` (look from `art.json` → `style.scene`, zones, terrain; never applied automatically), `Scatter`, `GeoShapes`, `Camera`, `Fx.ambience`, and recipes `Checkpoints`, `Zones`, `Round` and `Obby`. `K.toModelJson` covers more classes.
+- **UI:** `UI.hud`, `UI.anchor`, `UI.responsive`, `UI.bar`, `UI.tabs`, `UI.modal`, `UI.scroll`, `UI.grid`, `UI.focus`.
+- **Capture:** `K.cam`, `K.freeze`, `K.step`, `K.tour` hold a moment for `screen_capture`.
+- **New skills:** `level-design` (map list, blockout at Roblox scale, pacing, dressing, genre checklists, review tour, walkthrough) and `vfx` (silhouette first, layer timing, additive vs alpha, flipbooks, contact-sheet check).
+- **`assets` rewritten:** routes between Parts, Geo and Blender, creates a `.blend` through the Blender MCP, loops look-and-fix for at most 3 rounds, adds modelling guidance and budgets, says Studio import is manual, and reports failures instead of substituting.
+- **`art-critic` agent:** scores views against `art.json` without having built them.
+- **`game-design`:** progression and difficulty pacing, UI layout rules. **`ship`:** runs `ship-check.py`, asks about Allow Mesh & Image APIs. **`new`:** resume steps. **`import`:** where code goes. **`studio`:** Kit capture.
+- **Tools and hooks:** `fxcheck.py`, `stylecheck.py`, `ship-check.py`, `check-refs.py` and enforcement hooks. Skill text is now checked against the repo.
+- **Fixes:** skills use `${CLAUDE_PLUGIN_ROOT}` instead of the undefined `KIT` shorthand (checked on Claude Code 2.1.312), and `fxtex.py preview`, `tools/KIT_CREATIVE.md` and `sfx.py` paths are right. Install and platform claims corrected: macOS passes CI but has had no Studio session, and the plugin install test runs on Windows and Ubuntu.
+
 ## 1.1.0-beta.1 (unreleased)
 Beta of the creative engine and design workflow, plugin version 1.1.0-beta.1. **The nine 1.0 waivers are still open and move to 1.2** (touch, gamepad, phones, 2-player streaming, live DataStore scenarios); nothing here verifies them. Evidence and gaps: [docs/v1.1/LEDGER.md](docs/v1.1/LEDGER.md).
 - **Creative Kit:** `Fx` (layered effects on a shared `Scheduler`, pooling, Low/Medium/High quality, markers, hitstop, time scale; `Fx.emit` adapts RoClicks' MIT Emit convention), `Motion`, `Pose` (R15/R6, rig-checked clips with markers), `Audio`, `Tex`, `Geo` (procedural meshes dressed on clients). The V1 `VFX` and `UI` APIs are unchanged.
