@@ -15,6 +15,28 @@ return function(t: any)
 		return math.abs(a - b) <= (eps or 1e-6)
 	end
 
+	t.test("Geo.decode and Geo.unpack read a Blender export exactly", function()
+		local bytes = Geo.decode("AQID")
+		t.eq(buffer.len(bytes), 3)
+		t.eq(buffer.readu8(bytes, 2), 3)
+		t.eq(buffer.len(Geo.decode("AQ==")), 1)
+		-- One triangle: x positions 0, 2, 0 with unit 0.5, colour (10, 20, 30), up normals.
+		local part = {
+			verts = 3,
+			tris = 1,
+			pos = "AAAAAAAABAAAAAAAAAAAAAQA",
+			nrm = "AH8AAH8AAH8A",
+			col = "ChQeChQeChQe",
+			idx = "AAABAAIA",
+		}
+		local positions, normals, colors, indices = Geo.unpack(part, 0.5)
+		t.eq(positions[2].X, 2)
+		t.eq(positions[3].Z, 2)
+		t.eq(normals[1].Y, 1)
+		t.ok(math.abs(colors[1].G - 20 / 255) < 1e-6)
+		t.eq(indices[3], 3)
+	end)
+
 	t.test("Scene.validate accepts a real look and names what is wrong with a bad one", function()
 		t.ok(Scene.validate({
 			lighting = { ClockTime = 14, Ambient = Color3.new(0, 0, 0), GlobalShadows = true },

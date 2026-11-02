@@ -43,6 +43,14 @@ Stop at round 3, or earlier if a round finds nothing that changes the read at ga
 2. Save, then `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" export assets/art.json --output assets/exports/<new-version> --blender <executable>`. Get the executable from `bpy.app.binary_path` if `blender` isn't on PATH. Use a new version folder every time; exports never overwrite.
 3. Passing: `Exported N FBX assets` and a `report.json`. That proves local file generation and budgets only, not how it looks in Studio. Over budget: fix the model. Don't raise a budget without telling the user.
 
+## See it in Studio with no upload
+
+For review, or a game that allows Mesh & Image APIs, skip the import. In Blender, load `${CLAUDE_PLUGIN_ROOT}/scripts/blender/geo_export.py` with `importlib`, then call `export(["Root"], "<project>/src/shared/Models/Name.luau", name="Name")`. On a client: `Geo.model(require(Models.Name)).Parent = workspace`.
+
+- Colours come from a colour attribute, so bake AO and paint first. A material's custom property `rbx_material = "Neon"` sets the Roblox material, and each material is one MeshPart.
+- Budget about 8,000 triangles a module, because it's stored as script text. Passing: it builds with no error, and a `K.cam` screenshot matches the Blender render.
+- Parts don't collide, so pair them with invisible server Parts.
+
 ## Import into Studio (manual, today)
 
 No Studio MCP tool imports a local FBX, and `execute_luau` can't read one. This is the user's step, so hand them exact instructions:

@@ -462,6 +462,16 @@ export type PartOptions = {
 - `Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart`
   Turns a builder into a MeshPart, centred on its bounds (yields). The builder can't be used afterwards. Model space stays world space:
   the part is placed where the mesh was built around the origin.
+- `Geo.decode(text: string): buffer`
+  Decodes base64 text into a buffer (pure).
+- `Geo.unpack(part: { [string]: any }, unit: number): ({ Vector3 }, { Vector3 }, { Color3 }, { number })`
+  One part of a `scripts/blender/geo_export.py` module as plain arrays (pure): positions in studs,
+  normals, colours, and triangle indices (1-based).
+- `Geo.model(data: { [string]: any }, opts: PartOptions?): Model`
+  Rebuilds a Blender export as a Model of MeshParts, one per material, with its exact normals and
+  vertex colours. Client only (yields). No upload: it shows in Studio, and in published games that allow
+  Mesh & Image APIs. Parts don't collide, so pair them with invisible server Parts. `Clone()` it for
+  repeats; clones share the meshes.
 - `Geo.free(part: MeshPart)`
   Destroys a part from `Geo.build` and frees its mesh now. Only for parts that were never cloned: it
   blanks clones. Plain `Destroy` is enough otherwise; the mesh then goes with its last clone.

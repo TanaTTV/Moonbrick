@@ -405,6 +405,96 @@ function Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart
 	return part
 end
 
+local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local BASE64_VALUES: { [number]: number } = {}
+for i = 1, #BASE64 do
+	BASE64_VALUES[string.byte(BASE64, i)] = i - 1
+end
+
+-- Decodes base64 text into a buffer (pure).
+function Geo.decode(text: string): buffer
+	local pad = if string.sub(text, -2) == "==" then 2 elseif string.sub(text, -1) == "=" then 1 else 0
+	local size = #text // 4 * 3 - pad
+	local out = buffer.create(size)
+	local at, written = 1, 0
+	while at <= #text do
+		local a, b, c, d = string.byte(text, at, at + 3)
+		local value = BASE64_VALUES[a :: number] * 262144
+			+ BASE64_VALUES[b :: number] * 4096
+			+ (BASE64_VALUES[c :: number] or 0) * 64
+			+ (BASE64_VALUES[d :: number] or 0)
+		if written < size then
+			buffer.writeu8(out, written, value // 65536)
+		end
+		if written + 1 < size then
+			buffer.writeu8(out, written + 1, value // 256 % 256)
+		end
+		if written + 2 < size then
+			buffer.writeu8(out, written + 2, value % 256)
+		end
+		at += 4
+		written += 3
+	end
+	return out
+end
+
+-- One part of a `scripts/blender/geo_export.py` module as plain arrays (pure): positions in studs,
+-- normals, colours, and triangle indices (1-based).
+function Geo.unpack(part: { [string]: any }, unit: number): ({ Vector3 }, { Vector3 }, { Color3 }, { number })
+	local pos, nrm, col, idx = Geo.decode(part.pos), Geo.decode(part.nrm), Geo.decode(part.col), Geo.decode(part.idx)
+	local positions, normals, colors = table.create(part.verts), table.create(part.verts), table.create(part.verts)
+	local indices = table.create(part.tris * 3)
+	for i = 0, part.verts - 1 do
+		local a = i * 6
+		local b = i * 3
+		positions[i + 1] = Vector3.new(buffer.readi16(pos, a), buffer.readi16(pos, a + 2), buffer.readi16(pos, a + 4))
+			* unit
+		normals[i + 1] = Vector3.new(buffer.readi8(nrm, b), buffer.readi8(nrm, b + 1), buffer.readi8(nrm, b + 2)) / 127
+		colors[i + 1] = Color3.fromRGB(buffer.readu8(col, b), buffer.readu8(col, b + 1), buffer.readu8(col, b + 2))
+	end
+	for i = 0, part.tris * 3 - 1 do
+		indices[i + 1] = buffer.readu16(idx, i * 2) + 1
+	end
+	return positions, normals, colors, indices
+end
+
+-- Rebuilds a Blender export as a Model of MeshParts, one per material, with its exact normals and
+-- vertex colours. Client only (yields). No upload: it shows in Studio, and in published games that allow
+-- Mesh & Image APIs. Parts don't collide, so pair them with invisible server Parts. `Clone()` it for
+-- repeats; clones share the meshes.
+function Geo.model(data: { [string]: any }, opts: PartOptions?): Model
+	assert(data.format == 1, "Geo.model: unknown data format; re-export with scripts/blender/geo_export.py")
+	local o: PartOptions = opts or {}
+	local model = Instance.new("Model")
+	model.Name = o.name or data.name or "GeoModel"
+	for _, part in data.parts do
+		local positions, normals, colors, indices = Geo.unpack(part, data.unit)
+		local builder = Geo.new()
+		local mesh = builder.mesh :: any
+		local vertices, normalIds, colorIds =
+			table.create(part.verts), table.create(part.verts), table.create(part.verts)
+		for i = 1, part.verts do
+			vertices[i] = mesh:AddVertex(positions[i])
+			normalIds[i] = mesh:AddNormal(normals[i])
+			colorIds[i] = mesh:AddColor(colors[i], 1)
+		end
+		for i = 1, #indices, 3 do
+			local a, b, c = indices[i], indices[i + 1], indices[i + 2]
+			local face = mesh:AddTriangle(vertices[a], vertices[b], vertices[c])
+			mesh:SetFaceNormals(face, { normalIds[a], normalIds[b], normalIds[c] })
+			mesh:SetFaceColors(face, { colorIds[a], colorIds[b], colorIds[c] })
+		end
+		local piece = Geo.toPart(builder, {
+			name = part.name,
+			material = (Enum.Material :: any)[part.material],
+			anchored = o.anchored,
+			collision = false,
+		})
+		piece.Parent = model
+	end
+	return model
+end
+
 -- Destroys a part from `Geo.build` and frees its mesh now. Only for parts that were never cloned: it
 -- blanks clones. Plain `Destroy` is enough otherwise; the mesh then goes with its last clone.
 function Geo.free(part: MeshPart)

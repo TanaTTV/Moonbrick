@@ -135,7 +135,7 @@ function Tex.alpha(name: string, u: number, v: number, opts: Options?, frame: nu
 	if name == "glow" then
 		return (1 - math.clamp(r, 0, 1)) ^ 2.2
 	elseif name == "core" then
-		return falloff(r, o.softness or 0.35) ^ 0.8
+		return falloff(r * 1.08, o.softness or 0.35) ^ 0.8
 	elseif name == "ring" then
 		local width = o.thickness or 0.14
 		local d = math.abs(r - (0.86 - width)) / width
@@ -148,7 +148,7 @@ function Tex.alpha(name: string, u: number, v: number, opts: Options?, frame: nu
 		return math.clamp(arm + centre, 0, 1)
 	elseif name == "streak" then
 		local width = o.thickness or 0.12
-		local along = 1 - math.clamp(math.abs(u), 0, 1)
+		local along = 1 - math.clamp(math.abs(u) * 1.08, 0, 1)
 		local across = falloff(math.abs(v) / width, 0.9)
 		return across * along ^ 0.6
 	elseif name == "smoke" then

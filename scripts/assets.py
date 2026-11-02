@@ -1,6 +1,7 @@
 """Optional native Blender pipeline: validate an art manifest, export locally, keep source and reports."""
 from __future__ import annotations
 import argparse
+import sys
 import hashlib
 import json
 import math
@@ -276,6 +277,8 @@ def export(manifest: Path, output: Path, blender: str):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("validate", "export", "theme"))
     parser.add_argument("manifest", type=Path)
