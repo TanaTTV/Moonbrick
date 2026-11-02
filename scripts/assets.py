@@ -61,6 +61,70 @@ ROBLOX_FONT = re.compile(r"[A-Z][A-Za-z0-9]{1,40}")
 UI_KEYS = {"font", "displayFont", "corner", "stroke", "buttonFill"}
 
 
+# Mirrors Scene.Schema in luau/lib/shared/Scene.luau (a test keeps them equal): { min, max }, or a value kind.
+SCENE_SCHEMA = {
+    "lighting": {
+        "Ambient": "color", "OutdoorAmbient": "color", "ColorShift_Top": "color", "ColorShift_Bottom": "color", "FogColor": "color",
+        "ClockTime": (0, 24), "Brightness": (0, 10), "ExposureCompensation": (-5, 5), "ShadowSoftness": (0, 1),
+        "EnvironmentDiffuseScale": (0, 1), "EnvironmentSpecularScale": (0, 1), "GeographicLatitude": (-90, 90),
+        "FogStart": (0, 100000), "FogEnd": (0, 100000), "GlobalShadows": "boolean",
+    },
+    "atmosphere": {"Density": (0, 1), "Offset": (0, 1), "Glare": (0, 10), "Haze": (0, 10), "Color": "color", "Decay": "color"},
+    "sky": {
+        "CelestialBodiesShown": "boolean", "StarCount": (0, 5000), "SunAngularSize": (0, 60), "MoonAngularSize": (0, 60),
+        "SkyboxBk": "asset", "SkyboxDn": "asset", "SkyboxFt": "asset", "SkyboxLf": "asset", "SkyboxRt": "asset", "SkyboxUp": "asset",
+        "SunTextureId": "asset", "MoonTextureId": "asset",
+    },
+    "colorCorrection": {"Brightness": (-1, 1), "Contrast": (-1, 1), "Saturation": (-1, 1), "TintColor": "color"},
+    "bloom": {"Intensity": (0, 10), "Size": (0, 56), "Threshold": (0, 4)},
+    "sunRays": {"Intensity": (0, 1), "Spread": (0, 1)},
+}
+HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+ASSET_ID = re.compile(r"rbxasset(id)?://[^\s\"\\]+")
+
+
+def validate_scene(scene):
+    """style.scene: real values for Scene.apply. `false` on a section other than lighting removes that object."""
+    if not isinstance(scene, dict): raise ValueError("style.scene must be an object")
+    for section, values in scene.items():
+        schema = SCENE_SCHEMA.get(section)
+        if schema is None: raise ValueError(f"style.scene sections: {', '.join(SCENE_SCHEMA)}")
+        if values is False and section != "lighting": continue
+        if not isinstance(values, dict): raise ValueError(f"style.scene.{section} must be an object")
+        for key, value in values.items():
+            label = f"style.scene.{section}.{key}"
+            if key == "Technology": raise ValueError(f"{label} can't be set from scripts; choose it in Studio")
+            rule = schema.get(key)
+            if rule is None: raise ValueError(f"{label} is not a scene property")
+            if rule == "color":
+                if not (isinstance(value, str) and HEX_COLOR.fullmatch(value)): raise ValueError(f"{label} must be #RRGGBB")
+            elif rule == "boolean":
+                if type(value) != bool: raise ValueError(f"{label} must be true or false")
+            elif rule == "asset":
+                if not (isinstance(value, str) and ASSET_ID.fullmatch(value)): raise ValueError(f"{label} must be an rbxassetid:// or rbxasset:// id")
+            elif type(value) not in (int, float) or not math.isfinite(value) or not rule[0] <= value <= rule[1]:
+                raise ValueError(f"{label} must be a number in {rule[0]}..{rule[1]}")
+
+
+def scene_table(scene: dict) -> list[str]:
+    """Luau table lines for a validated style.scene, sections and keys in a stable order."""
+    def literal(rule, value):
+        if rule == "color": return f'Color3.fromHex("{value}")'
+        if rule == "boolean": return "true" if value else "false"
+        if rule == "asset": return f'"{value}"'
+        return repr(value)
+    lines = ["{"]
+    for section, schema in SCENE_SCHEMA.items():
+        if section not in scene: continue
+        if scene[section] is False:
+            lines.append(f"\t{section} = false,")
+            continue
+        lines.append(f"\t{section} = {{")
+        lines += [f"\t\t{key} = {literal(rule, scene[section][key])}," for key, rule in schema.items() if key in scene[section]]
+        lines.append("\t},")
+    return lines + ["}"]
+
+
 def validate_direction(style: dict):
     """Optional art-direction fields (design brief -> code): genres, references, ui, motion."""
     genres = style.get("genres", [])
@@ -81,17 +145,20 @@ def validate_direction(style: dict):
     if ui.get("buttonFill", "gradient") not in ("gradient", "flat", "outline"): raise ValueError("style.ui.buttonFill must be gradient, flat or outline")
     motion = style.get("motion", {})
     if not isinstance(motion, dict) or any(not isinstance(v, str) for v in motion.values()): raise ValueError("style.motion values must be text")
+    if "scene" in style: validate_scene(style["scene"])
 
 
 def theme(cfg: dict) -> str:
-    """Luau for the game's look: UI.useTheme plus an Fx palette, generated from the manifest's style."""
+    """Luau for the game's look: UI.useTheme, an Fx palette and any style.scene, from the manifest's style."""
     style = cfg["style"]
+    scene = style.get("scene")
     palette, ui = style["palette"], style.get("ui", {})
     color = lambda key: f'Color3.fromHex("{palette[key]}")'
     lines = [
         f'-- Generated from assets/art.json ("{style["name"]}"): python KIT/scripts/assets.py theme assets/art.json',
         "-- Edit the manifest, not this file, so the art direction stays in one place.",
         'local ReplicatedStorage = game:GetService("ReplicatedStorage")',
+        *(["local Scene = require(ReplicatedStorage.Kit.Scene)"] if scene is not None else []),
         "local UI = require(ReplicatedStorage.Kit.UI)",
         "",
         "local ArtStyle = {}",
@@ -118,7 +185,12 @@ def theme(cfg: dict) -> str:
     for key in ("corner", "stroke"):
         if key in ui: lines.append(f"\t\t{key} = {ui[key]},")
     if "buttonFill" in ui: lines.append(f'\t\tbuttonFill = "{ui["buttonFill"]}",')
-    lines += ["\t})", "end", "", "return ArtStyle", ""]
+    lines += ["\t})", "end", ""]
+    if scene is not None:
+        table = scene_table(scene)
+        lines += ["-- The look for Scene.apply: lighting, atmosphere, sky and post effects.", "ArtStyle.scene = " + table[0], *table[1:], ""]
+        lines += ["-- Never automatic: call this from one startup script (the server, so everyone gets the look).", "function ArtStyle.applyScene()", "\tScene.apply(ArtStyle.scene)", "end", ""]
+    lines += ["return ArtStyle", ""]
     return "\n".join(lines)
 
 
