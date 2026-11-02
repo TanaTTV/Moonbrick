@@ -1,6 +1,6 @@
 ---
 name: game-design
-description: Roblox game design and creative direction — the creative brief (references, hybrid genres, art direction), design docs, core loops, game feel ("juice"), first-time player experience, mobile/console/PC support, screenshot-based visual review, and fair monetization. Use when planning a game or feature, when the user asks for a look, style or vibe, when they share reference images, when they ask to make something feel better, look better, or be more fun, and before calling a player-facing feature done.
+description: 'Roblox game design and creative direction: briefs, art style, core loops, progression, difficulty, game feel, UI layout, first-time experience, fair monetization. Use for "plan a game", "give it a style", "make it more fun", shared reference images, and before calling a player-facing feature done.'
 ---
 
 # Game design
@@ -27,10 +27,10 @@ artwork, and never commit someone else's image. The goal is the *principle*, exe
 ## 2. Record it once
 - `docs/design.md` → "Art direction" section (template next to this file): references with take/avoid,
   genre ownership, palette roles, shape language, motion feel, UI shape, effect style, camera.
-- `assets/art.json` → `style` holds the machine-readable part: `palette`, `genres`, `references`,
+- `assets/art.json` (start from a copy of `${CLAUDE_PLUGIN_ROOT}/assets/art.example.json`; a bare file fails validation) → `style` holds the machine-readable part: `palette`, `genres`, `references`,
   `ui` (`font`, `displayFont`, `corner`, `stroke`, `buttonFill`), `motion`. Validate it with
-  `python KIT/scripts/assets.py validate assets/art.json` (an empty `assets` list is fine without Blender).
-- `python KIT/scripts/assets.py theme assets/art.json --output src/shared/ArtStyle.luau` generates
+  `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json` (an empty `assets` list is fine without Blender).
+- `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" theme assets/art.json --output src/shared/ArtStyle.luau` generates
   `ArtStyle.apply()` (`UI.useTheme`) and `ArtStyle.palette` (Fx roles). Edit the manifest, not the output.
 
 ## 3. Calibrate away from AI defaults
@@ -41,15 +41,17 @@ Untended output drifts to the same look. Choose each of these deliberately rathe
 - one hero colour used at full saturation everywhere (no value contrast, no focal point).
 Prefer one focal colour against restrained surroundings, a shape language that repeats (round and soft,
 or sharp and angular), and motion with anticipation → impact → follow-through.
-For effects, animation, procedural props and themed UI, read `KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
+For effects, animation, procedural props and themed UI, read `tools/KIT_CREATIVE.md` (Fx, Motion, Pose, Audio,
 Tex, Geo).
+
+Maps and levels: follow `moonbrick:level-design`. Effects: follow `moonbrick:vfx`.
 
 ## 4. Game feel checklist (every player-facing action)
 - **Anticipation → action → impact → follow-through.** The peak stacks 3+ channels: visual, screen
   (shake/flash/FOV), UI (number pop) and sound. Hitstop (`handle:freeze`) sells weight.
 - **Escalation** on repeats; **feedback for everything**, including refusals ("Need 50 coins").
 - Small actions respond in < 0.15 s; big moments take 2–8 s and must be skippable or worth repeating.
-- You can't hear: synthesise placeholders (`scripts/sfx.py`) or leave named cues; the user approves audio.
+- You can't hear: synthesise placeholders (`python "${CLAUDE_PLUGIN_ROOT}/scripts/sfx.py" render <dir>`) or leave named cues; the user approves audio.
 
 ## 5. First-time experience (players decide in < 60 s)
 Goal and first interactable visible within 10 s; teach by doing; first reward < 30 s; first "wow"
@@ -59,20 +61,52 @@ within minutes; nothing modal on spawn.
 Buttons ≥ 48 px, nothing vital in the top corners, thumb-reachable actions; every action reachable by
 gamepad (`ProximityPrompt`, `GuiService.SelectedObject`); `Fx` quality levels for low-end devices.
 
-## 7. Visual review (screenshots, then fix)
-Numbers prove logic; only images prove looks. Capture 1–3 stills at the key moments (freeze effects with
-`Fx.setGlobalTimeScale(0)`; see the studio skill), then score:
+## 7. UI layout
+Design at 1280x720 and let it scale; phones are the real target. Never position a screen with offsets alone.
+- **Root:** `UI.hud(name)` is a safe-area frame clear of the top bar and notches. Everything hangs off it.
+- **Corners:** `UI.anchor` pins groups: stats top-left, currency top-right, actions bottom-right under the
+  right thumb, movement space bottom-left left empty for the touch stick.
+- **Scale:** `UI.responsive` on any fixed-design panel; it clamps at 0.6 so text stays legible. Check the
+  smallest case, not just a desktop window. Body text 14 px or more at design size.
+- **One thing on top:** `UI.modal` for decisions, never on spawn. `UI.tabs` over 3+ sections instead of more
+  buttons, `UI.scroll` for anything that can grow, `UI.grid` inside it for inventories, `UI.bar` for meters.
+- **Gamepad:** `UI.tabs` and `UI.modal` set focus themselves; any other screen calls `UI.focus` when it opens.
+- **HUD budget:** 4 elements in view during play. Anything else opens on demand.
+Colours and fonts come from `ArtStyle`/`UI.useTheme`.
+
+## 8. Visual review (screenshots, then fix)
+Numbers prove logic; only images prove looks. Capture 1–3 stills at the key moments (freeze with
+`K.freeze`; see the studio skill), then score:
 - **Read at a glance:** silhouette and value. Squint: is the focal point still the brightest, clearest thing?
 - **Hierarchy:** one focal point per moment; UI never covers the action.
 - **Direction match:** palette roles, shape language and type from the art direction, not defaults (§3).
 - **Contrast:** text readable on both bright and dark backgrounds.
 - **Clutter:** remove anything that doesn't serve the moment.
-Name the **top 3 weaknesses**, fix them, recapture, and repeat until a round finds nothing important
-(the plateau). Stills can't prove timing or motion: say so and ask the user to watch it play.
+Name the **top 3 weaknesses**, fix them, recapture. Stop after 3 rounds, or sooner if a round finds nothing
+important. Stills can't prove timing or motion: say so and ask the user to watch it play.
 
-## 8. Retention and monetization (fair and policy-safe)
+## 9. Progression and difficulty
+Write these numbers into `docs/design.md`; they decide more than any single feature.
+- **Reward timing:** first reward under 30 s, then gaps that roughly double: 30 s, 1 min, 2 min, 4 min, to a
+  5-10 minute rhythm. A new long goal should appear before the last one is finished, so there's never a
+  moment with nothing to want.
+- **Costs:** each tier 1.5x to 2x the last. Under 1.3x feels like nothing changed; over 3x reads as a wall.
+  Income should rise with it, so a tier takes a bit longer than the last, not ten times longer. Simulate the
+  first hour in a spec: list price, income and time for each tier, and look for flat stretches and spikes.
+- **Show the next thing:** the next upgrade, area or rank is always visible, with its price and a progress bar.
+- **Difficulty is a sawtooth, not a ramp:** 3 to 4 steps up, then an easy stretch with a reward. Relief is
+  what makes the next climb feel earned.
+- **One new thing at a time:** teach a mechanic safely, test it, then combine it. Never raise difficulty and
+  add a mechanic in the same step.
+- **Fair failure:** a new obstacle should take 1-3 tries early on, 3-8 later. If a playtest takes more, players
+  are guessing; ease the step or teach it better. Fast retry beats a lower difficulty.
+- **Stuck players:** give a route round any hard gate (skip, alternate path, pity reward). Never gate the core
+  loop behind paying.
+- **Session ends:** finish on a nearly complete goal, not a clean stop.
+
+## 10. Retention and monetization (fair and policy-safe)
 Progression, collection, daily goals and social play bring players back. Sell convenience and cosmetics,
 never power. Show odds before any paid random item. Players may be children, so keep it honest.
 
-## 9. When the user gives feedback
+## 11. When the user gives feedback
 Record **why** in `docs/design.md` ("What works" / "Avoid") so future features match their taste.

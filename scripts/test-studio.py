@@ -1,8 +1,11 @@
 """Emit a Studio test bundle using isolated, unparented containers. Does not start/stop play or access persistent stores."""
 import argparse
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
+# Load order: each module's requires must already be in `modules`. Fx loads VFX and Geo lazily.
+SHARED = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Net", "VFX", "Fx", "UI", "Scene", "GeoShapes", "Scatter", "Camera")
 
 
 def bundle():
@@ -18,34 +21,38 @@ removing.Parent = sandbox
 local services = {
     ReplicatedStorage = replication,
     Players = {PlayerRemoving = removing.Event},
-    RunService = {IsServer = function() return true end, IsClient = function() return false end, IsStudio = function() return true end},
+    RunService = {
+        IsServer = function() return true end, IsClient = function() return false end, IsStudio = function() return true end,
+        IsRunning = function() return engineGame:GetService("RunService"):IsRunning() end,
+        Heartbeat = engineGame:GetService("RunService").Heartbeat, PreSimulation = engineGame:GetService("RunService").PreSimulation,
+    },
     DataStoreService = {GetDataStore = function() error("persistent store access forbidden in test bundle") end},
 }
 local game = {JobId = "moonbrick-isolated", GetService = function(_,name) return services[name] or engineGame:GetService(name) end}
 local modules, suites = {}, {}
 '''
-    sources = {"PlayerData": "luau/lib/server/PlayerData.luau", "Net": "luau/lib/shared/Net.luau", "VFX": "luau/lib/shared/VFX.luau", "UI": "luau/lib/shared/UI.luau", "MCPKit": "luau/MCPKit.luau"}
+    sources = {"PlayerData": "luau/lib/server/PlayerData.luau", "MCPKit": "luau/MCPKit.luau"}
+    sources.update({name: f"luau/lib/shared/{name}.luau" for name in SHARED})
     sources.update({name: f"luau/lib/server/{name}.luau" for name in ("Cooldown", "Round", "Economy")})
     net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
     prefix += "local function loadNet(game, Instance, os, warn)\n" + net + "\nend\n"
     for name, rel in sources.items():
         source = (ROOT / rel).read_text(encoding="utf-8").replace("_G.K = K", "-- isolated test bundle: no global cache")
+        source = re.sub(r"require\(script\.Parent\.(\w+)\)", r"modules.\1", source)
         prefix += f"modules.{name} = (function()\n{source}\nend)()\n"
     paths = sorted((ROOT / "luau/tests").glob("*.spec.luau"))
     for rel in paths:
         source = rel.read_text(encoding="utf-8")
         source = source.replace('t.require(game:GetService("ServerScriptService").Kit.PlayerData)', 'modules.PlayerData')
-        source = source.replace('t.require(game:GetService("ReplicatedStorage").Kit.Net)', 'modules.Net')
+        source = re.sub(r't\.require\(game:GetService\("ReplicatedStorage"\)\.Kit\.(\w+)\)', r"modules.\1", source)
         source = source.replace('t.require(game:GetService("ServerStorage").MCPKit)', 'modules.MCPKit')
         source = source.replace('local Kit = game:GetService("ReplicatedStorage").Kit', 'local Kit = modules')
         source = source.replace('local Kit = game:GetService("ServerScriptService").Kit', 'local Kit = modules')
-        source = source.replace('t.require(Kit.VFX)', 'modules.VFX').replace('t.require(Kit.UI)', 'modules.UI')
-        for name in ("Cooldown", "Round", "Economy"):
-            source = source.replace(f't.require(Kit.{name})', f'modules.{name}')
+        source = re.sub(r"t\.require\(Kit\.(\w+)\)", r"modules.\1", source)
         prefix += f"table.insert(suites, (function()\n{source}\nend)())\n"
     return prefix + '''
 local passed, failed, errors = 0, 0, {}
-local t = {loadNet = loadNet}
+local t = {loadNet = loadNet, isolated = true}
 function t.eq(a,b,msg) assert(a == b, (msg or "") .. " expected " .. tostring(b) .. ", got " .. tostring(a)) end
 function t.ok(v,msg) assert(v,msg or "expected truthy") end
 function t.near(a,b,eps,msg) assert(math.abs(a-b) <= (eps or 1e-6),msg or "not near") end

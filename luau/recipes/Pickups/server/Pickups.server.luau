@@ -14,6 +14,14 @@ local RESPAWN = 5
 local MAX_DISTANCE = 12
 
 local taken: { [BasePart]: boolean } = {}
+local glows: { [BasePart]: { sparkle: ParticleEmitter, light: PointLight } } = {}
+
+local function setGlow(coin: BasePart, enabled: boolean)
+	local glow = glows[coin]
+	if glow then
+		glow.sparkle.Enabled, glow.light.Enabled = enabled, enabled
+	end
+end
 
 local function collect(player: Player, coin: BasePart): string
 	if taken[coin] then
@@ -32,8 +40,10 @@ local function collect(player: Player, coin: BasePart): string
 	VFX.burst(coin.Position, { count = 20 })
 	local transparency = coin.Transparency
 	coin.Transparency, coin.CanTouch = 1, false
+	setGlow(coin, false)
 	task.delay(RESPAWN, function()
 		coin.Transparency, coin.CanTouch = transparency, true
+		setGlow(coin, true)
 		taken[coin] = nil
 	end)
 	return "collected"
@@ -45,7 +55,8 @@ local function setup(instance: Instance)
 		return
 	end
 	local coin = instance
-	VFX.glow(coin)
+	local sparkle, light = VFX.glow(coin)
+	glows[coin] = { sparkle = sparkle, light = light }
 	coin.Touched:Connect(function(hit)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if player then
@@ -61,6 +72,7 @@ CollectionService:GetInstanceAddedSignal(TAG):Connect(setup)
 CollectionService:GetInstanceRemovedSignal(TAG):Connect(function(instance)
 	if instance:IsA("BasePart") then
 		taken[instance] = nil
+		glows[instance] = nil
 	end
 end)
 

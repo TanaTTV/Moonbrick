@@ -8,8 +8,13 @@ local CatalogModule = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Sho
 -- WaitForChild loses the module's type; restate the shape the server also uses.
 local Catalog = (require(CatalogModule) :: any) :: { [string]: { price: number } }
 
+-- Panel sized from its content: 16 padding on each side, a 44 title and one 64 + 10 row per button.
+local rows = 0
+for _ in Catalog do
+	rows += 1
+end
 local gui = UI.screen("Shop")
-local panel = UI.panel({ parent = gui, size = UDim2.fromOffset(260, 200), title = "Shop" })
+local panel = UI.panel({ parent = gui, size = UDim2.fromOffset(272, 32 + 44 + rows * 74), title = "Shop" })
 for id, item in Catalog do
 	UI.button({
 		parent = panel,

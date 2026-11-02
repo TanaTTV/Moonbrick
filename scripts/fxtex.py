@@ -20,6 +20,7 @@ import math
 import os
 from pathlib import Path
 import shutil
+import sys
 import struct
 import zlib
 
@@ -87,7 +88,7 @@ def alpha(name, u, v, opts=None, frame=0.0):
     if name == "glow":
         return (1 - _clamp(r)) ** 2.2
     if name == "core":
-        return _falloff(r, o.get("softness", 0.35)) ** 0.8
+        return _falloff(r * 1.08, o.get("softness", 0.35)) ** 0.8
     if name == "ring":
         width = o.get("thickness", 0.14)
         d = abs(r - (0.86 - width)) / width
@@ -100,7 +101,7 @@ def alpha(name, u, v, opts=None, frame=0.0):
         return _clamp(arm + centre)
     if name == "streak":
         width = o.get("thickness", 0.12)
-        along = 1 - _clamp(abs(u))
+        along = 1 - _clamp(abs(u) * 1.08)
         across = _falloff(abs(v) / width, 0.9)
         return across * along ** 0.6
     if name == "smoke":
@@ -199,6 +200,8 @@ def preview(out: Path):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")

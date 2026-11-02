@@ -7,6 +7,11 @@
 --   local stop = Scheduler.every(fn, "PreSimulation")                         -- before physics (poses)
 local RunService = game:GetService("RunService")
 
+-- Studio only: MCP code has its own copy of every module, so `K.freeze`/`K.step` reach the game's copy
+-- through these attributes on ReplicatedStorage (instances are shared; module state is not).
+local TIME_SCALE_ATTRIBUTE = "MoonbrickTimeScale"
+local STEP_ATTRIBUTE = "MoonbrickStep" -- Vector2(sequence, seconds): the sequence makes repeats fire
+
 local Scheduler = {}
 
 export type Phase = "Heartbeat" | "PreSimulation"
@@ -15,9 +20,9 @@ type Job = { step: (number) -> boolean, alive: boolean }
 local queues: { [Phase]: { Job } } = { Heartbeat = {}, PreSimulation = {} }
 local timeScale = 1
 local connections: { [Phase]: RBXScriptConnection? } = {}
+local scaleListeners: { (number) -> () } = {}
 
-local function run(phase: Phase, rawDt: number)
-	local dt = rawDt * timeScale
+local function run(phase: Phase, dt: number)
 	local jobs = queues[phase]
 	local i = 1
 	while i <= #jobs do
@@ -56,7 +61,7 @@ function Scheduler.every(step: (number) -> boolean, phase: Phase?): () -> ()
 	if not connections[which] then
 		local signal = if which == "PreSimulation" then RunService.PreSimulation else RunService.Heartbeat
 		connections[which] = signal:Connect(function(dt: number)
-			run(which, dt)
+			run(which, dt * timeScale)
 		end)
 	end
 	return function()
@@ -67,6 +72,14 @@ end
 -- Global time scale for every job: 0 freezes Fx/Pose/Motion (frame captures), 0.2 is slow motion.
 function Scheduler.setTimeScale(scale: number)
 	timeScale = math.clamp(scale, 0, 4)
+	for _, listener in scaleListeners do
+		listener(timeScale)
+	end
+end
+
+-- Calls `fn(scale)` after every time scale change (Fx uses it to hold its particle emitters).
+function Scheduler.onTimeScale(fn: (number) -> ())
+	table.insert(scaleListeners, fn)
 end
 
 function Scheduler.getTimeScale(): number
@@ -88,9 +101,31 @@ function Scheduler.count(phase: Phase?): number
 	return total
 end
 
--- Advances every job by `dt` without waiting for a frame. Deterministic tests and frame captures use this.
+-- Advances jobs by `dt` without waiting for a frame (default: both phases, physics phase first), for
+-- deterministic tests and frame captures. `dt` follows the time scale, except while frozen (scale 0),
+-- when it applies as given: that is how a capture steps a frozen frame.
 function Scheduler.advance(dt: number, phase: Phase?)
-	run(phase or "Heartbeat", dt)
+	local scaled = if timeScale == 0 then dt else dt * timeScale
+	if phase then
+		run(phase, scaled)
+	else
+		run("PreSimulation", scaled)
+		run("Heartbeat", scaled)
+	end
+end
+
+if RunService:IsStudio() then
+	local host = game:GetService("ReplicatedStorage")
+	host:GetAttributeChangedSignal(TIME_SCALE_ATTRIBUTE):Connect(function()
+		local scale = host:GetAttribute(TIME_SCALE_ATTRIBUTE)
+		Scheduler.setTimeScale(if type(scale) == "number" then scale else 1)
+	end)
+	host:GetAttributeChangedSignal(STEP_ATTRIBUTE):Connect(function()
+		local step = host:GetAttribute(STEP_ATTRIBUTE)
+		if typeof(step) == "Vector2" then
+			Scheduler.advance(step.Y)
+		end
+	end)
 end
 
 return Scheduler

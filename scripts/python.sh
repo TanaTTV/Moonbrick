@@ -14,3 +14,12 @@ moonbrick_python() {
 	echo 'error: Moonbrick project safety tools require Python 3.10+' >&2
 	return 2
 }
+
+# Skills quote their paths, so Bash leaves "~/RobloxProjects/x" alone; expand a leading ~ here.
+moonbrick_path() {
+	case "$1" in
+	'~') printf '%s\n' "$HOME" ;;
+	'~/'* | '~\'*) printf '%s\n' "$HOME/${1:2}" ;;
+	*) printf '%s\n' "$1" ;;
+	esac
+}

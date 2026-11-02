@@ -1,26 +1,70 @@
 ---
 name: assets
-description: Build consistent Roblox art assets with an optional native Blender pipeline, local validation, FBX export and Studio import review. Use for professional 3D props, environments, rigs or asset workflow requests.
+description: 'Make 3D models for a Roblox game (props, trees, weapons, statues, buildings, rigs): pick Parts, Geo or Blender, model in Blender, export FBX, import to Studio. Use for "make a model", "low-poly tree", "build this in Blender", "import this FBX".'
 argument-hint: "[art manifest or asset brief]"
 ---
 
-# Professional assets
+# 3D assets
 
-The plugin root is two folders above this skill; call it `KIT`. Blender remains optional. Use native Studio tools for simple prototypes, Blender for authored meshes/UVs/rigs, and native Rojo syncback for full-fidelity instance export.
+`assets/art.json` is the contract: style, palette, budgets. If it's missing, copy `${CLAUDE_PLUGIN_ROOT}/assets/art.example.json` there and adapt style, palette, silhouettes, materials, lighting and budgets to `docs/design.md`. Reuse the palette in UI and effects. Record ownership, licence and references in the design doc. `python` means Python 3.10+; if it isn't found, use `py -3` (Windows) or `python3`.
 
-1. Read `docs/design.md` and the project art manifest. If absent, copy `KIT/assets/art.example.json` to `assets/art.json` and adapt the style, palette, silhouettes, materials, lighting and explicit geometry/texture budgets to the user's brief. Reuse the same palette in UI/VFX. Record asset ownership/license and references in the design doc.
-2. Keep `.blend` sources inside the manifest folder. Author in Metric, unit scale 1 (meters); name export roots explicitly. Assets include selected roots and their descendants. For rigs include the armature and skinned meshes. Pack textures or keep their source files available.
-3. `python KIT/scripts/assets.py validate assets/art.json`. It prints one compact summary. Inspect only relevant scene objects/materials, not the whole Blender datablock tree.
-4. `python KIT/scripts/assets.py export assets/art.json --output assets/exports/<new-version> --blender <executable>`. Native background Blender, embedded-script autoexecution disabled; validates triangles/materials/texture sizes, exports FBX, keeps source hashes and a report. Never overwrites prior exports or saves the input `.blend`.
-5. Review `report.json` and the output `art.json` asset `export` records (the source manifest stays unchanged). These record maps/hashes/colorspaces, bone hierarchy/skin budgets, and clip ranges/fps/keyed bones. A successful export proves local file generation only. Use the source manifest for future exports. Native round-trip and Studio tests are separate gates.
-6. Studio File → Import: preview FBX, set Scale Unit to **Meters**, review bounds/pivots, normals, collision fidelity, materials, UVs and rig/animation warnings. Disable **Upload to Roblox** during iteration. Obtain approval before any upload/publication or use of another creator's inventory asset. Keep imported models in an isolated review container until accepted.
-7. Preserve meshes/UI/rigs/effects as `.rbxm` or native Rojo syncback output. `K.toModelJson` is a basic primitives/light/value exporter; it refuses complex classes and references. Never delete the Studio original before validating fidelity in the rebuilt/synced copy.
-8. Screenshot-review readability, consistency, hierarchy, clutter and performance on target devices. Iterate source/export rather than patching synced scripts in Studio.
+## Pick the route
 
-Set `pbr: true` on an asset to require all four SurfaceAppearance maps on every material. Use an active Principled BSDF with directly connected image nodes for Base Color, Roughness and Metallic; connect the normal image through a tangent-space Normal Map node. `ColorMap` uses sRGB; `NormalMap`, `RoughnessMap` and `MetalnessMap` use Non-Color. SurfaceAppearance map dimensions must be powers of two; other textures may use non-power-of-two dimensions (for example 300×200). Every texture still obeys its asset maxTextureSize budget; PBR `maxTextureSize` must be at most 1024 (a pipeline budget). Export emits `<id>_<material-index>_<Map>.png` alongside FBX. All four PNGs are recorded for manual SurfaceAppearance assignment; FBX base-color/normal links are regression-tested. Shader baking, procedural shader graphs, other PBR channels and arbitrary node transformations are not covered. Roblox expects OpenGL normal maps; review orientation and shading in Studio. See [SurfaceAppearance](https://create.roblox.com/docs/reference/engine/classes/SurfaceAppearance).
+| The thing is | Route | Why |
+|---|---|---|
+| Box-shaped: floor, wall, platform, hitbox, trigger | Parts, exported to `src/world/` | Collides, saves, replicates, costs almost nothing |
+| Simple and repeated: rock, crate, fence, lantern, tree | `GeoShapes` spots, or `Geo.register` for your own | No Blender, no upload; clones share one mesh. Published games need "Allow Mesh & Image APIs" |
+| Seen up close, named in the brief, or needs its own silhouette, UVs or PBR: statue, weapon, vehicle, landmark | Blender | Parts and lathes can't hold that shape |
+| Skinned or animated | Blender rig | Read `${CLAUDE_SKILL_DIR}/references/pipeline.md` first |
 
-For `kind: "rig"`, optional `maxBones` defaults to 128 (pipeline ceiling) and `maxInfluences` defaults to 4 (hard ceiling of four positive deform-bone weights per vertex). Lower budgets are allowed. Every skinned vertex needs a positive weight. Only one enabled vertex-group armature modifier is supported per skinned mesh; apply other modifiers first. Bone envelopes and weights on non-deform bones are refused. Set `animation: true` for one active bone-keyed action per rig, mute NLA tracks, and use integer clip endpoints. Multiple selected rigs must share a frame range; export bakes every frame at scene fps, with no key simplification. NLA/multiple-clip export and avatar/R15 compliance are not validated.
+If Blender is the right route but `get_addon_status` fails or the Blender tools aren't listed, tell the user in one line and offer to connect it or accept a `Geo` stand-in. Use the stand-in only on their yes, and label it a stand-in in `docs/design.md`.
 
-FBX rig/animation import through the [3D Importer](https://create.roblox.com/docs/studio/importer) and [Animation Editor](https://create.roblox.com/docs/animation/editor) is a **manual Studio step**. Import the rig, then select it in Animation Editor and use Import → From File for the FBX clip. In its Import Settings, set **Rest Pose Source** to **Imported Rig** and use the same Scale Unit as the rig import. The default *Imported Rig (Zeroed Rotations)* bakes the exporter's −90° X axis conversion into the root bone keys, so the rig plays lying flat. Don't use the clip the 3D Importer saves on its own (`RBX_ANIMSAVES/<rig>/Scene`): its top pose is named after the Blender armature, so root-bone keys are ignored. Check bone mapping, timing, scale, deformation and playback before accepting; upload/publication still requires explicit approval.
+## Create the `.blend` (Blender MCP)
 
-Maintainer regression for the exporter (`python "KIT/scripts/test-blender.py" --blender <executable>`, Blender only, no Roblox import): see `KIT/docs/ASSETS.md`.
+1. `get_addon_status`, then `get_scene_info`. Passing: Blender answers and you know what's open. Don't touch a scene the user is working in without asking.
+2. With `execute_blender_code`, in small steps: Metric, unit scale 1, new scene, then `bpy.ops.wm.save_as_mainfile` to `assets/source/<name>.blend`. Keep `.blend` sources inside the manifest folder. Look shader nodes up by type, not name. Pack textures or keep their source files beside the `.blend`.
+3. Read `${CLAUDE_SKILL_DIR}/references/modelling.md`, then block the silhouette. Keep a character-height box beside it for scale and remove it before export.
+4. Run the review loop below.
+5. Name the export root plainly, add the asset to `assets` in `art.json` with its budgets, save.
+
+## Review loop (max 3 rounds)
+
+Each round:
+1. `look` with `mode: "angles"`, target the root, `views: ["front", "right", "top", "three_quarter"]`, `shading: "material"`, `max_size: 512`. Add a close `distance` only to read one detail.
+2. `get_scene_info` with `fields: ["details", "topology", "materials", "ground"]` and `root` set to the asset. Compare faces and materials with the budget.
+3. Name the **top 3 weaknesses against `art.json`**: silhouette, value zones, proportion, material contrast, palette. "Looks unfinished" is not a weakness; "handle and blade share one value, so it reads as one blob at phone size" is.
+4. Fix those three, nothing else.
+
+Stop at round 3, or earlier if a round finds nothing that changes the read at game distance, and report what's still weak rather than polishing on. For a hero asset, give the object name to the `moonbrick:art-critic` agent, which didn't build it and takes its own views. Its findings go to the user; they don't start a fourth round unless the user asks.
+
+## Export
+
+1. `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" validate assets/art.json`. Passing: one `Art manifest OK` line.
+2. Save, then `PYTHONUTF8=1 python "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" export assets/art.json --output assets/exports/<new-version> --blender <executable>`. Get the executable from `bpy.app.binary_path` if `blender` isn't on PATH. Use a new version folder every time; exports never overwrite.
+3. Passing: `Exported N FBX assets` and a `report.json`. That proves local file generation and budgets only, not how it looks in Studio. Over budget: fix the model. Don't raise a budget without telling the user.
+
+## See it in Studio with no upload
+
+For review, or a game that allows Mesh & Image APIs, skip the import. In Blender, load `${CLAUDE_PLUGIN_ROOT}/scripts/blender/geo_export.py` with `importlib`, then call `export(["Root"], "<project>/src/shared/Models/Name.luau", name="Name")`. On a client: `Geo.model(require(Models.Name)).Parent = workspace`.
+
+- Colours come from a colour attribute, so bake AO and paint first. A material's custom property `rbx_material = "Neon"` sets the Roblox material, and each material is one MeshPart.
+- Budget about 8,000 triangles a module, because it's stored as script text. Passing: it builds with no error, and a `K.cam` screenshot matches the Blender render.
+- Parts don't collide, so pair them with invisible server Parts.
+
+## Import into Studio (manual, today)
+
+No Studio MCP tool imports a local FBX, and `execute_luau` can't read one. This is the user's step, so hand them exact instructions:
+
+File → Import → the `.fbx`; check the preview; **Scale Unit: Meters**; turn **Upload to Roblox** off while iterating (it's on by default, and any upload needs their explicit OK, as does another creator's inventory asset). In the preview, read bounds, pivots, normals, collision fidelity, materials, UVs and rig warnings. Keep the result in an isolated review container until accepted.
+
+When they say it's in: `K.tree` to find it, `K.props` for `Size`, then a screenshot beside a character. Passing: right size, right way up, no missing faces, materials present. The Meters setting hasn't been exercised in this repo's Studio evidence (that run used the default, where 1 Blender metre came in as 1 stud), so measure the first import. If scale is off, report the ratio and re-import; don't resize in Studio to hide it.
+
+## When something fails
+
+Report the exact error text and the step that produced it. The `.blend` stays as it is, so the step can be retried. Never quietly swap Parts, a Toolbox model or a generated mesh in for a failed export or import; the user decides. `search_assets`, `import_asset` and `generate_3d` run only when the user asks, because of licences and credits.
+
+## Keep it
+
+Preserve meshes, UI, rigs and effects as `.rbxm` or native Rojo syncback output. `K.toModelJson` covers parts, spawns, seats, trusses, attachments, lights, emitters and prompts; a MeshPart exports as a reference to its uploaded MeshId, so that id must stay available, and runtime `Geo` meshes are refused. Never delete the Studio original before validating fidelity in the rebuilt or synced copy. Iterate on the source and re-export rather than patching in Studio.
+
+Finish with a screenshot review of readability, consistency, hierarchy, clutter and performance on target devices. Manifest details, PBR, rigs and animation import: `${CLAUDE_SKILL_DIR}/references/pipeline.md`. Maintainer regression for the exporter: `python "${CLAUDE_PLUGIN_ROOT}/scripts/test-blender.py" --blender <executable>` (Blender only, no Roblox import), described in `${CLAUDE_PLUGIN_ROOT}/docs/ASSETS.md`.

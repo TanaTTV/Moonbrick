@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import random
 import shutil
+import sys
 import wave
 
 RATE = 44100
@@ -290,6 +291,8 @@ def preview(out_dir: Path):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")

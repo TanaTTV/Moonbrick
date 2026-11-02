@@ -1,4 +1,5 @@
 """Prepare a disposable Studio hierarchy for a reproducible MCP tree-output benchmark."""
+import sys
 import argparse
 import json
 from pathlib import Path
@@ -38,6 +39,7 @@ return "prepared {name}: 154 instances"
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     prepare(parser.parse_args().directory)

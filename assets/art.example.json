@@ -39,6 +39,47 @@
     },
     "motion": {
       "feel": "soft and springy: backOut pops, slow idle bobs, short anticipation before rewards"
+    },
+    "scene": {
+      "lighting": {
+        "ClockTime": 18.2,
+        "Brightness": 2.2,
+        "ExposureCompensation": 0.1,
+        "Ambient": "#2E3550",
+        "OutdoorAmbient": "#5A6688",
+        "ColorShift_Top": "#FFE2B8",
+        "ColorShift_Bottom": "#26304E",
+        "ShadowSoftness": 0.35,
+        "EnvironmentDiffuseScale": 0.6,
+        "EnvironmentSpecularScale": 0.4
+      },
+      "atmosphere": {
+        "Density": 0.32,
+        "Offset": 0.25,
+        "Haze": 1.4,
+        "Glare": 0.3,
+        "Color": "#C9C4DC",
+        "Decay": "#7A6E9C"
+      },
+      "sky": {
+        "CelestialBodiesShown": true,
+        "StarCount": 3000,
+        "SunAngularSize": 14
+      },
+      "colorCorrection": {
+        "Contrast": 0.08,
+        "Saturation": 0.06,
+        "TintColor": "#FFF6EC"
+      },
+      "bloom": {
+        "Intensity": 0.5,
+        "Size": 24,
+        "Threshold": 1.4
+      },
+      "sunRays": {
+        "Intensity": 0.08,
+        "Spread": 0.6
+      }
     }
   },
   "assets": [

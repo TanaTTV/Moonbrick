@@ -187,5 +187,46 @@ class ArtDirectionTests(unittest.TestCase):
         self.assertIn("ArtStyle.palette = {", text)
         self.assertTrue(text.endswith("return ArtStyle\n"))
 
+    def test_theme_generates_the_scene_only_when_the_manifest_has_one(self):
+        text = assets.theme(self.check(self.manifest()))
+        self.assertIn("local Scene = require(ReplicatedStorage.Kit.Scene)", text)
+        self.assertIn("ArtStyle.scene = {", text)
+        self.assertIn("\t\tClockTime = 18.2,", text)
+        self.assertIn('\t\tAmbient = Color3.fromHex("#2E3550"),', text)
+        self.assertIn("\t\tCelestialBodiesShown = true,", text)
+        self.assertIn("function ArtStyle.applyScene()\n\tScene.apply(ArtStyle.scene)\nend", text)
+        old = self.manifest()
+        del old["style"]["scene"]
+        text = assets.theme(self.check(old))
+        self.assertNotIn("Scene", text)
+        self.assertNotIn("applyScene", text)
+
+    def test_scene_false_removes_a_section(self):
+        lines = assets.scene_table({"sky": False, "bloom": {"Intensity": 1}})
+        self.assertEqual(lines, ["{", "\tsky = false,", "\tbloom = {", "\t\tIntensity = 1,", "\t},", "}"])
+
+    def test_old_manifests_stay_valid(self):
+        cfg = self.manifest()
+        del cfg["style"]["scene"]
+        self.assertEqual(self.check(cfg)["style"]["name"], "Moonstone Garden")
+
+    def test_bad_scenes_name_the_problem(self):
+        cases = (
+            ("sunset", "must be an object"),
+            ({"weather": {}}, "sections"),
+            ({"lighting": False}, "must be an object"),
+            ({"lighting": {"Technology": "Future"}}, "choose it in Studio"),
+            ({"lighting": {"Clocktime": 12}}, "not a scene property"),
+            ({"lighting": {"ClockTime": 25}}, "0..24"),
+            ({"lighting": {"ClockTime": True}}, "must be a number"),
+            ({"lighting": {"ClockTime": float("nan")}}, "must be a number"),
+            ({"lighting": {"Ambient": "white"}}, "#RRGGBB"),
+            ({"lighting": {"GlobalShadows": 1}}, "true or false"),
+            ({"sky": {"SkyboxUp": "http://example.com/x.png"}}, "rbxassetid"),
+        )
+        for scene, message in cases:
+            with self.subTest(scene=scene), self.assertRaisesRegex(ValueError, message):
+                self.check(self.manifest(scene=scene))
+
 
 if __name__ == "__main__": unittest.main()

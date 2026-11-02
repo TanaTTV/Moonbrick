@@ -13,6 +13,15 @@ local RADIUS = 14
 local DAMAGE = 25
 local COLOR = Color3.fromRGB(255, 70, 90)
 
+-- The rig that owns a part (accessories nest models, so walk up to the one with a Humanoid).
+local function rigOf(part: BasePart): Model?
+	local model = part:FindFirstAncestorOfClass("Model")
+	while model and not model:FindFirstChildOfClass("Humanoid") do
+		model = model:FindFirstAncestorOfClass("Model")
+	end
+	return model
+end
+
 local gate = Cooldown.new()
 Net.declare("AbilityFx")
 
@@ -29,17 +38,25 @@ local function cast(player: Player): string
 	end
 	local origin = root.Position
 	local hits = 0
-	for _, model in workspace:GetChildren() do
-		local target = model:FindFirstChildOfClass("Humanoid")
-		local targetRoot = model:FindFirstChild("HumanoidRootPart")
+	local seen: { [Model]: boolean } = {}
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Exclude
+	overlap.FilterDescendantsInstances = { character }
+	-- A radius query finds rigs wherever they live (Workspace.World, a map folder), not just at the top level.
+	for _, part in workspace:GetPartBoundsInRadius(origin, RADIUS, overlap) do
+		local model = rigOf(part)
+		local target = model and model:FindFirstChildOfClass("Humanoid")
+		local targetRoot = model and model:FindFirstChild("HumanoidRootPart")
 		if
-			model ~= character
+			model
+			and not seen[model]
 			and target
 			and target.Health > 0
 			and targetRoot
 			and targetRoot:IsA("BasePart")
 			and (targetRoot.Position - origin).Magnitude <= RADIUS
 		then
+			seen[model] = true
 			target:TakeDamage(DAMAGE)
 			hits += 1
 		end

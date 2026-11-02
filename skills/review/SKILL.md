@@ -13,7 +13,7 @@ Gather evidence first (cheap, parallel where possible), then judge. Scope: the a
 2. Edit datamodel: `K.audit()` and `K.perf()` (one call).
 3. Playtest (studio recipe): `K.test()`, then drive the main features via debug hooks; collect `K.logs()`.
 4. Security read-through: every `Net.on`/`Net.handle`/`OnServerEvent` — are arguments validated *and* game rules checked on the server (ownership, distance from a server-trusted position — a raw client `HumanoidRootPart` can be teleported — cooldowns, prices from server tables)? Any data saved outside `PlayerData`?
-5. Visuals: 2–4 screenshots of the key moments (spawn view, main UI, a big effect at its peak) — `screen_capture` with a camera position, or during the playtest.
+5. Visuals: 2–4 screenshots of the key moments (spawn view, main UI, a big effect at its peak) — `screen_capture` with a camera position, or `K.cam`/`K.freeze`/`K.tour` during the playtest. For a view from something that didn't build it, give the moment and camera positions to the `moonbrick:art-critic` agent.
 6. Read `docs/design.md` if it exists.
 
 **Judge** with the game-design skill: game feel, first-time experience, platforms, visual review checklist, design-doc consistency.

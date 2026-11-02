@@ -1,7 +1,9 @@
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
+import socket
 import tempfile
 import time
 import unittest
@@ -28,9 +30,68 @@ class DevServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "default.project.json").write_text(json.dumps({"name": "same"}))
-            with patch.object(server, "probe", return_value={"projectName": "same", "sessionId": "other"}), patch.object(server.subprocess, "Popen") as launch:
+            with patch.object(server, "probe", return_value={"projectName": "same", "sessionId": "other"}), patch.object(server, "listener_pid", return_value=77), patch.object(server.subprocess, "Popen") as launch:
                 self.assertIsNone(server.ensure(root))
                 launch.assert_not_called()
+
+    def test_port_conflict_says_exactly_what_to_do(self):
+        with tempfile.TemporaryDirectory() as tmp, patch("sys.stdout", new_callable=io.StringIO) as out:
+            root = Path(tmp)
+            (root / "default.project.json").write_text(json.dumps({"name": "b", "servePort": 40000}))
+            with patch.object(server, "probe", return_value={"projectName": "a", "sessionId": "x"}), patch.object(server, "listener_pid", return_value=77), patch.object(server, "free_port", return_value=40001):
+                server.ensure(root)
+            message = out.getvalue()
+            self.assertIn("serves 'a'", message)
+            self.assertIn("77", message)
+            self.assertIn('"servePort": 40001', message)
+            self.assertIn("Rojo plugin", message)
+
+    def test_conflict_help_without_a_known_process_still_gives_the_port_route(self):
+        with patch.object(server, "listener_pid", side_effect=ValueError("no owner")), patch.object(server, "free_port", return_value=40001):
+            self.assertIn('"servePort": 40001', server.conflict_help(40000))
+
+    def test_free_port_skips_a_bound_port(self):
+        with socket.socket() as held:
+            held.bind(("127.0.0.1", 0))
+            port = held.getsockname()[1]
+            self.assertNotEqual(server.free_port(port - 1), port)
+
+    def test_netstat_output_in_a_console_code_page_cannot_crash_startup(self):
+        result = Mock(stdout="TCP 127.0.0.1:4999 0.0.0.0:0 ABH?REN 42\n")
+        with patch.object(server.os, "name", "nt"), patch.object(server.subprocess, "run", return_value=result) as run:
+            self.assertEqual(server.listener_pid(4999), 42)
+        self.assertEqual(run.call_args.kwargs["errors"], "replace")
+
+    def test_startup_timeout_stops_the_launch_and_names_the_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "default.project.json").write_text(json.dumps({"name": "game"}))
+            child = Mock(pid=12345)
+            child.poll.return_value = None
+            connection = Mock()
+            connection.__enter__ = Mock(return_value=connection)
+            connection.__exit__ = Mock(return_value=False)
+            connection.connect_ex.return_value = 1
+            with patch.object(server, "STARTUP_SECONDS", 0), patch.object(server, "probe", side_effect=OSError("absent")), patch.object(server.socket, "socket", return_value=connection), patch.object(server.shutil, "which", return_value="rojo"), patch.object(server.subprocess, "Popen", return_value=child), patch.object(server, "stop_tree") as stop:
+                with self.assertRaisesRegex(ValueError, "did not answer within 0 s"):
+                    server.ensure(root)
+            stop.assert_called_once_with(child)
+
+    def test_startup_budget_fits_inside_the_session_hook(self):
+        hooks = json.loads((ROOT / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        self.assertLess(server.STARTUP_SECONDS, hooks[0]["hooks"][0]["timeout"])
+
+    def test_session_notes_name_the_plugin_and_flag_a_stale_kit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "tools/.moonbrick-version").write_text("0.9.0\n")
+            notes = server.session_notes(root, ROOT)
+            self.assertIn((ROOT / "scripts").as_posix(), notes[0])
+            self.assertIn("/moonbrick:update", notes[1])
+            version = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"]
+            (root / "tools/.moonbrick-version").write_text(version + "\n")
+            self.assertEqual(len(server.session_notes(root, ROOT)), 1)
 
     def test_invalid_port_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

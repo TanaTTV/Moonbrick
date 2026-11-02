@@ -89,6 +89,22 @@ function Pose.clip(clip: Clip): Clip
 	assert(type(clip.name) == "string", "Pose.clip needs a name")
 	assert(clip.length > 0, `Pose clip '{clip.name}' needs a positive length`)
 	assert(#clip.keys > 0, `Pose clip '{clip.name}' needs keys`)
+	for i, key in clip.keys do
+		assert(
+			type(key.t) == "number" and key.t >= 0 and key.t <= clip.length,
+			`Pose clip '{clip.name}': key {i} needs a time 't' inside the clip`
+		)
+		assert(type(key.joints) == "table", `Pose clip '{clip.name}': key {i} needs a joints table`)
+		for name, value in key.joints do
+			assert(
+				typeof(value) == "CFrame",
+				`Pose clip '{clip.name}': key {i} joint '{name}' must be a CFrame, got {typeof(value)}`
+			)
+		end
+		if key.ease and not Motion.isEase(key.ease) then
+			warn(`Pose clip '{clip.name}': key {i} has unknown ease '{key.ease}' (linear used)`)
+		end
+	end
 	table.sort(clip.keys, function(a, b)
 		return a.t < b.t
 	end)
@@ -243,6 +259,35 @@ local function advance(track: Internal, dt: number): { [string]: CFrame }?
 	return out
 end
 
+-- One bad track ends itself; it never stops the shared Pose job or the other tracks.
+local function stepModel(model: Model, tracks: { Internal }, dt: number)
+	-- Later tracks win per joint (layering order = play order).
+	local combined: { [string]: CFrame } = {}
+	for _, track in table.clone(tracks) do
+		local ok, pose = pcall(advance, track, dt)
+		if not ok then
+			warn(`Pose: '{track.clip.name}' failed and was stopped: {pose}`)
+			finish(track)
+		elseif pose then
+			for name, cf in pose do
+				combined[name] = cf
+			end
+		end
+	end
+	local rig = if #tracks > 0 then tracks[1]._rig else nil
+	if rig then
+		for name, cf in combined do
+			local joint = rig.joints[name]
+			if joint then
+				(joint.instance :: any).Transform = cf
+			end
+		end
+	end
+	if not model.Parent then
+		active[model] = nil
+	end
+end
+
 local stepping = false
 local function ensureStepping()
 	if stepping then
@@ -250,29 +295,14 @@ local function ensureStepping()
 	end
 	stepping = true
 	Scheduler.every(function(dt)
-		for model, tracks in active do
-			-- Later tracks win per joint (layering order = play order).
-			local combined: { [string]: CFrame } = {}
-			for _, track in table.clone(tracks) do
-				local pose = advance(track, dt)
-				if pose then
-					for name, cf in pose do
-						combined[name] = cf
-					end
-				end
+		local ok, err = pcall(function()
+			for model, tracks in active do
+				stepModel(model, tracks, dt)
 			end
-			local rig = if #tracks > 0 then tracks[1]._rig else nil
-			if rig then
-				for name, cf in combined do
-					local joint = rig.joints[name]
-					if joint then
-						(joint.instance :: any).Transform = cf
-					end
-				end
-			end
-			if not model.Parent then
-				active[model] = nil
-			end
+		end)
+		if not ok then
+			warn(`Pose: step failed, active poses dropped: {err}`)
+			table.clear(active)
 		end
 		if next(active) == nil then
 			stepping = false

@@ -1,6 +1,7 @@
 """Run shipped Luau specs with a pinned Luau CLI and a small deterministic store harness."""
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,19 +17,24 @@ def bundle():
     net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
     net_suite = (ROOT / "luau/tests/Net.spec.luau").read_text(encoding="utf-8")
     code += "loadNet = function(game, Instance, os, warn)\n" + net + "\nend\n"
-    code += "services.ReplicatedStorage = { Kit = { Net = 'Net' } }\n"
+    code += "services.ReplicatedStorage = Instance.new('Folder')\nservices.ReplicatedStorage.Kit = { Net = 'Net' }\n"
     code += "modules.Net = loadNet(game, Instance, os, warn)\n"
     for name in ("Cooldown", "Round", "Economy"):
         source = (ROOT / f"luau/lib/server/{name}.luau").read_text(encoding="utf-8")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ServerScriptService.Kit.{name} = '{name}'\n"
     gameplay = (ROOT / "luau/tests/Gameplay.spec.luau").read_text(encoding="utf-8")
     code += creative_modules()
-    creative_spec = (ROOT / "luau/tests/Creative.spec.luau").read_text(encoding="utf-8")
-    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + net_suite + "\nend)(), (function()\n" + creative_spec + "\nend)(), (function()\n" + tex_parity_spec() + "\nend)()}\n"
+    code += mcpkit_module()
+    specs = [suite, gameplay, net_suite]
+    specs += [(ROOT / f"luau/tests/{name}.spec.luau").read_text(encoding="utf-8") for name in HEADLESS_SPECS]
+    specs += [tex_parity_spec(), scene_parity_spec()]
+    code += "suites = {" + ", ".join(f"(function()\n{spec}\nend)()" for spec in specs) + "}\n"
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
 
 
-CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Fx")
+CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Fx", "VFX", "UI", "Scene", "GeoShapes", "Scatter", "Camera")
+# Specs with pure logic or that use the headless stand-ins; the rest need Studio.
+HEADLESS_SPECS = ("Creative", "Capture", "World")
 
 
 def creative_modules() -> str:
@@ -40,6 +46,12 @@ def creative_modules() -> str:
             source = source.replace(f"require(script.Parent.{other})", f"modules.{other}")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ReplicatedStorage.Kit.{name} = '{name}'\n"
     return code
+
+
+def mcpkit_module() -> str:
+    source = (ROOT / "luau/MCPKit.luau").read_text(encoding="utf-8").replace("_G.K = K", "-- no global cache headless")
+    code = "services.ServerStorage = Instance.new('Folder')\nservices.ServerStorage.Name = 'ServerStorage'\nservices.ServerStorage.MCPKit = 'MCPKit'\n"
+    return code + f"modules.MCPKit = (function()\n{source}\nend)()\n"
 
 
 def tex_parity_spec() -> str:
@@ -59,6 +71,49 @@ def tex_parity_spec() -> str:
         "\t\t\tlocal got = Tex.alpha(row[1], row[2], row[3], nil, row[4])\n"
         "\t\t\tt.ok(math.abs(got - row[5]) < 1e-6, row[1] .. ' differs: ' .. got .. ' vs ' .. row[5])\n"
         "\t\tend\n"
+        "\tend)\n"
+        "end"
+    )
+
+
+def scene_parity_spec() -> str:
+    """assets.py validates art.json without Studio, so its schema must match Scene.Schema exactly."""
+    spec = importlib.util.spec_from_file_location("assets_tool", ROOT / "scripts/assets.py")
+    assets = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(assets)
+    rows = []
+    for section, schema in assets.SCENE_SCHEMA.items():
+        for key, rule in schema.items():
+            low, high = rule if isinstance(rule, tuple) else ("nil", "nil")
+            kind = "nil" if isinstance(rule, tuple) else f'"{rule}"'
+            rows.append(f'{{ "{section}", "{key}", {kind}, {low}, {high} }}')
+    scene = json.loads((ROOT / "assets/art.example.json").read_text(encoding="utf-8"))["style"]["scene"]
+    return (
+        "return function(t)\n"
+        "\tlocal Scene = t.require(game:GetService('ReplicatedStorage').Kit.Scene)\n"
+        "\tt.test('assets.py and Scene.Schema list the same properties', function()\n"
+        f"\t\tlocal rows = {{ {', '.join(rows)} }}\n"
+        "\t\tlocal total = 0\n"
+        "\t\tfor _, section in Scene.Schema do\n"
+        "\t\t\tfor _ in section do\n"
+        "\t\t\t\ttotal += 1\n"
+        "\t\t\tend\n"
+        "\t\tend\n"
+        "\t\tt.eq(total, #rows, 'property count')\n"
+        "\t\tfor _, row in rows do\n"
+        "\t\t\tlocal rule = Scene.Schema[row[1]][row[2]]\n"
+        "\t\t\tif row[3] then\n"
+        "\t\t\t\tt.eq(rule, row[3], row[2])\n"
+        "\t\t\telse\n"
+        "\t\t\t\tt.eq(rule[1], row[4], row[2])\n"
+        "\t\t\t\tt.eq(rule[2], row[5], row[2])\n"
+        "\t\t\tend\n"
+        "\t\tend\n"
+        "\tend)\n"
+        "\tt.test('the generated example scene is a valid look', function()\n"
+        f"\t\tlocal look = {chr(10).join(assets.scene_table(scene))}\n"
+        "\t\tlocal ok, why = Scene.validate(look)\n"
+        "\t\tt.ok(ok, why)\n"
         "\tend)\n"
         "end"
     )

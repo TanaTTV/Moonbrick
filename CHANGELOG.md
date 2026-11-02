@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 (2026-11-01)
+World tools, a route for creating 3D models, and design guidance that tells Claude how, not just what. **The nine 1.0 waivers are still open and move to 1.2.** No phone has been measured, and the Blender and effect loops below have not yet been run end to end on a real project.
+- **World:** `Scene` (look from `art.json` → `style.scene`, zones, terrain; never applied automatically), `Scatter`, `GeoShapes`, `Camera`, `Fx.ambience`, and recipes `Checkpoints`, `Zones`, `Round` and `Obby`. `K.toModelJson` covers more classes.
+- **UI:** `UI.hud`, `UI.anchor`, `UI.responsive`, `UI.bar`, `UI.tabs`, `UI.modal`, `UI.scroll`, `UI.grid`, `UI.focus`.
+- **Capture:** `K.cam`, `K.freeze`, `K.step`, `K.tour` hold a moment for `screen_capture`.
+- **New skills:** `level-design` (map list, blockout at Roblox scale, pacing, dressing, genre checklists, review tour, walkthrough) and `vfx` (silhouette first, layer timing, additive vs alpha, flipbooks, contact-sheet check).
+- **`assets` rewritten:** routes between Parts, Geo and Blender, creates a `.blend` through the Blender MCP, loops look-and-fix for at most 3 rounds, adds modelling guidance and budgets, says Studio import is manual, and reports failures instead of substituting.
+- **`art-critic` agent:** scores views against `art.json` without having built them.
+- **`game-design`:** progression and difficulty pacing, UI layout rules. **`ship`:** runs `ship-check.py`, asks about Allow Mesh & Image APIs. **`new`:** resume steps. **`import`:** where code goes. **`studio`:** Kit capture.
+- **Blender models in Studio with no upload:** `scripts/blender/geo_export.py` packs geometry, normals and painted colours into a Luau module, and `Geo.model` rebuilds it as MeshParts on the client. A 15,860-triangle model built in 0.35 s in Studio.
+- **Verified in a live Studio playtest:** a test level built with these tools passed 98 specs with clean logs at a steady 60 FPS on one desktop. A character walked its full route.
+- **`FlipbookIncompatible` is unreliable:** Studio 0.743 says sheets must be 1024x1024 even for 1024x1024 sheets, and a 512x512 sheet played correctly in a side-by-side test. `fxcheck.py` reports sheet size as a note.
+- **Tools and hooks:** `fxcheck.py`, `stylecheck.py`, `ship-check.py`, `check-refs.py` and enforcement hooks. Skill text is now checked against the repo.
+- **Fixes:** skills use `${CLAUDE_PLUGIN_ROOT}` instead of the undefined `KIT` shorthand (checked on Claude Code 2.1.312), and `fxtex.py preview`, `tools/KIT_CREATIVE.md` and `sfx.py` paths are right. Install and platform claims corrected: macOS passes CI but has had no Studio session, and the plugin install test runs on Windows and Ubuntu.
+
 ## 1.1.0-beta.1 (unreleased)
 Beta of the creative engine and design workflow, plugin version 1.1.0-beta.1. **The nine 1.0 waivers are still open and move to 1.2** (touch, gamepad, phones, 2-player streaming, live DataStore scenarios); nothing here verifies them. Evidence and gaps: [docs/v1.1/LEDGER.md](docs/v1.1/LEDGER.md).
 - **Creative Kit:** `Fx` (layered effects on a shared `Scheduler`, pooling, Low/Medium/High quality, markers, hitstop, time scale; `Fx.emit` adapts RoClicks' MIT Emit convention), `Motion`, `Pose` (R15/R6, rig-checked clips with markers), `Audio`, `Tex`, `Geo` (procedural meshes dressed on clients). The V1 `VFX` and `UI` APIs are unchanged.
@@ -9,7 +24,7 @@ Beta of the creative engine and design workflow, plugin version 1.1.0-beta.1. **
 - **Cards:** creative APIs live in `tools/KIT_CREATIVE.md` (22 KB, read only for visual work); the core card grew by 0.3 KB.
 - **Fixes:** generated mesh faces were inside-out; clients' 8-mesh EditableMesh limit is handled by baking fixed-size copies.
 - **Fx/Geo review fixes:** torus/shard layers fall back to ring/wedge parts when meshes can't be made (published games without "Allow Mesh & Image APIs"), and a layer that fails to build no longer leaks the effect; `Geo.cached` builds each key once even for concurrent first callers, and `Fx.preload()` warms Fx's mesh shapes at startup; overlapping `freeze` calls no longer freeze forever, and a 60 s real-time watchdog ends any effect; `Fx.play` runs its first step on the next frame, so `:on()` listeners see events at t = 0. Headless tests cover each.
-||||||| 1d847a5
+
 ## 1.0.1 (2026-11-01)
 **Behaviour change:** live player data that can no longer be saved (NaN, invalid UTF-8, mixed keys) now kicks the player by default, keeping the last good save. Set `onSaveInvalid` to handle it yourself.
 - **Removed the demo games** (Crystal Rush, Element Brawl), `scripts/create-example.py` and their CI build to keep the plugin lean. The recipes and template are unchanged.
@@ -30,7 +45,7 @@ First stable release. 4 of 13 stable gates passed in Studio; the other 9 were wa
 ## 1.0.0-beta.1 (2026-10-15, beta)
 Beta, not a stable 1.0. Evidence per requirement, including what was **not** tested, is in [docs/history/V1-BETA-LEDGER.md](docs/history/V1-BETA-LEDGER.md).
 - Live DataStore acceptance passed on a disposable private experience (7/7: round-trip, session-lock contention, stale-lock takeover, shutdown flush, invalid-data refusal + recovery, retry/backoff; no leftovers, 51/60 requests). Not yet run live: real engine shutdown/restart, natural 600 s lock expiry, two-server contention, real provider throttling.
-- Measured Claude Code benchmark ([docs/BENCHMARK.md](docs/BENCHMARK.md), n=3 per condition): with the plugin merely installed the skills were not invoked on a terse prompt; when told to use Moonbrick they were, with session-locked saves in 3/3 runs (vs naive DataStore in 6/6 baseline runs) at about 1.9x median cost. No token saving is claimed. Start with `/moonbrick:new`.
+- Measured Claude Code benchmark ([docs/BENCHMARK.md](docs/BENCHMARK.md), n=3 per condition): with the plugin merely installed the skills were not invoked, even though the 196-word prompt named Moonbrick; when told to use Moonbrick they were, with session-locked saves in 3/3 runs (vs naive DataStore in 6/6 baseline runs) at about 1.9x median cost. No token saving is claimed. Start with `/moonbrick:new`.
 - Remote GitHub marketplace install verified; bench harness path handling fixed for Windows 8.3 and macOS `/private/var` temp directories; benchmark tests run in CI.
 - Rojo startup ownership on Windows walks a native process snapshot instead of PowerShell/WMI (which took up to 20 s, the whole SessionStart budget); the install test stops a Rojo orphaned by a hook timeout on its own port only.
 - Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; measured results are in docs/BENCHMARK.md.

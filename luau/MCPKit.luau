@@ -1,7 +1,7 @@
 --!nonstrict
 -- Dynamic inspection accepts engine objects and arbitrary test values. Game libraries remain strict.
 -- MCPKit: compact helpers for Roblox Studio MCP. Install once per datamodel via execute_luau.
-local K: any = { v = 4 }
+local K: any = { v = 5 }
 local function SES()
 	return game:GetService("ScriptEditorService") -- lazy: not available in every datamodel
 end
@@ -19,15 +19,37 @@ function K.get(p: any)
 	if typeof(p) == "Instance" then
 		return p
 	end
-	local i = game
+	local segs = {}
 	for seg in string.gmatch((p:gsub("^game%.", "")), "[^%.]+") do
-		local n = i:FindFirstChild(seg) or (i == game and game:GetService(seg))
-		if not n then
-			error("not found: " .. p .. " (at " .. seg .. ")", 2)
-		end
-		i = n
+		table.insert(segs, seg)
 	end
-	return i
+	-- Names can hold dots ("Creative.spec"): at each level try one segment, then joined ones, and back
+	-- out of dead ends, so everything K.path prints resolves.
+	local deepest = 1
+	local function walk(i: any, first: any)
+		if first > #segs then
+			return i
+		end
+		deepest = math.max(deepest, first)
+		for last = first, #segs do
+			local name = table.concat(segs, ".", first, last)
+			local n = i:FindFirstChild(name)
+			if not n and i == game then
+				local ok, service = pcall(game.GetService, game, name)
+				n = ok and service or nil
+			end
+			local found = n and walk(n, last + 1)
+			if found then
+				return found
+			end
+		end
+		return nil
+	end
+	local found = walk(game, 1)
+	if not found then
+		error("not found: " .. p .. " (at " .. tostring(segs[deepest]) .. ")", 2)
+	end
+	return found
 end
 
 local function fmt(v: any)
@@ -346,16 +368,219 @@ function K.hook(feature: any, action: any, ...: any)
 	return f:Invoke(action, ...)
 end
 
+-- Capture ---------------------------------------------------------------------
+-- K only sets up the moment; the picture comes from the MCP screen_capture tool. A sequence, each line
+-- an execute_luau call in the Client datamodel, then screen_capture:
+--   K.cam(Vector3.new(0, 20, 40), Vector3.new(0, 5, 0))    K.freeze()      [capture]
+--   K.step(1/30)                                                           [capture]
+--   K.unfreeze()    K.release()
+-- MCP code has its own copy of the Kit, so freezing crosses to the game's copy through attributes on
+-- ReplicatedStorage that the game's Scheduler watches in Studio.
+local CAPTURE_BIND = "MoonbrickCapture"
+local CAPTURE_PRIORITY = Enum.RenderPriority.Camera.Value + 10
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+-- A CFrame from K.cam's arguments: a CFrame, or a position with a point or instance to look at.
+function K.frameFrom(at: any, look: any)
+	if typeof(at) == "CFrame" then
+		return at
+	end
+	assert(typeof(at) == "Vector3", "K.cam needs a CFrame or a Vector3 position")
+	local target: any = look
+	if typeof(look) == "Instance" then
+		target = (look :: any):GetPivot().Position
+	end
+	if target == nil then
+		return CFrame.new(at)
+	end
+	assert((target - at).Magnitude > 1e-3, "K.cam: the camera can't look at its own position")
+	return CFrame.lookAt(at, target)
+end
+
+local function setAvatar(modifier: any)
+	local character = Players.LocalPlayer and Players.LocalPlayer.Character
+	if not character then
+		return
+	end
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("BasePart") or d:IsA("Decal") then
+			d.LocalTransparencyModifier = modifier
+		end
+	end
+end
+
+local function holdCamera()
+	local hold = K._cam
+	local camera = workspace.CurrentCamera
+	if hold and camera then
+		camera.CameraType = Enum.CameraType.Scriptable
+		camera.CFrame = hold.cf
+		if hold.fov then
+			camera.FieldOfView = hold.fov
+		end
+		if hold.hide then
+			setAvatar(1) -- every frame: the default camera scripts reset it
+		end
+	end
+end
+
+-- Holds the camera on a CFrame, or at a position looking at a point or instance, and hides the avatar.
+-- opts: fov, hide = false keeps the avatar. Client datamodel in a playtest; in Edit it moves the view once.
+function K.cam(at: any, look: any, opts: any)
+	if typeof(at) == "CFrame" and opts == nil and type(look) == "table" then
+		look, opts = nil, look
+	end
+	opts = opts or {}
+	local cf = K.frameFrom(at, look)
+	local camera = workspace.CurrentCamera
+	if not RunService:IsRunning() then
+		camera.CFrame = cf
+		return "edit camera moved"
+	end
+	assert(RunService:IsClient(), "K.cam needs the Client datamodel during a playtest")
+	K._saved = K._saved or { type = camera.CameraType, subject = camera.CameraSubject, fov = camera.FieldOfView }
+	K._cam = { cf = cf, fov = opts.fov, hide = opts.hide ~= false }
+	RunService:UnbindFromRenderStep(CAPTURE_BIND) -- binding a name twice would run both
+	RunService:BindToRenderStep(CAPTURE_BIND, CAPTURE_PRIORITY, holdCamera)
+	return "camera held at " .. fmt(cf.Position)
+end
+
+-- Gives the camera and avatar back.
+function K.release()
+	RunService:UnbindFromRenderStep(CAPTURE_BIND)
+	local saved, camera = K._saved, workspace.CurrentCamera
+	K._cam, K._saved = nil, nil
+	if saved and camera then
+		camera.CameraType = saved.type
+		camera.CameraSubject = saved.subject
+		camera.FieldOfView = saved.fov
+	end
+	setAvatar(0)
+	return "camera released"
+end
+
+-- Freezes the game's Fx, Motion and Pose, and every particle emitter in Workspace. VFX tweens, physics and
+-- Animator playback keep running. Holds until K.unfreeze, across as many MCP calls as a shoot needs.
+function K.freeze()
+	if K._frozen then
+		return "already frozen"
+	end
+	local emitters, count = {}, 0
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("ParticleEmitter") and d.TimeScale > 0 then
+			emitters[d] = d.TimeScale
+			count += 1
+			d.TimeScale = 0
+		end
+	end
+	K._frozen = emitters
+	game:GetService("ReplicatedStorage"):SetAttribute("MoonbrickTimeScale", 0)
+	return "frozen (" .. count .. " emitters held)"
+end
+
+-- Advances a frozen moment by dt seconds (default one 30 fps frame): jobs step exactly, particles
+-- have no step API, so they run for dt of real time. Yields.
+function K.step(dt: any)
+	assert(K._frozen, "K.step needs K.freeze first")
+	dt = dt or 1 / 30
+	K._stepSequence = (K._stepSequence or 0) + 1
+	game:GetService("ReplicatedStorage"):SetAttribute("MoonbrickStep", Vector2.new(K._stepSequence, dt))
+	for emitter, scale in pairs(K._frozen) do
+		emitter.TimeScale = scale
+	end
+	task.wait(dt)
+	for emitter in pairs(K._frozen) do
+		emitter.TimeScale = 0
+	end
+	return "stepped " .. fmt(dt) .. " s"
+end
+
+function K.unfreeze()
+	local emitters = K._frozen
+	K._frozen = nil
+	game:GetService("ReplicatedStorage"):SetAttribute("MoonbrickTimeScale", nil)
+	for emitter, scale in pairs(emitters or {}) do
+		emitter.TimeScale = scale
+	end
+	return "unfrozen"
+end
+
+-- One tour stop as { cf, fov, label, freeze } (pure). A stop is a CFrame, or a table with `cf`, or `at`
+-- plus an optional `look`; `fov`, `label` and `freeze = true` are optional.
+function K.tourStop(stop: any, index: any)
+	if typeof(stop) == "CFrame" then
+		return { cf = stop, label = "stop " .. index }
+	end
+	assert(type(stop) == "table", "K.tour: stop " .. index .. " must be a CFrame or a table")
+	assert(stop.cf or stop.at, "K.tour: stop " .. index .. " needs cf or at")
+	return {
+		cf = stop.cf or K.frameFrom(stop.at, stop.look),
+		fov = stop.fov,
+		freeze = stop.freeze == true,
+		label = stop.label or ("stop " .. index),
+	}
+end
+
+-- Walks viewpoints one screen_capture at a time. K.tour(name, stops) checks the list and goes to the first;
+-- each K.tour(name) goes to the next and returns "name 2/5 label"; past the last it lets go and returns
+-- "done". Each call returns after a frame has rendered there, ready for screen_capture.
+function K.tour(name: any, stops: any)
+	K._tours = K._tours or {}
+	if stops then
+		local list = {}
+		for i, stop in ipairs(stops) do
+			list[i] = K.tourStop(stop, i)
+		end
+		assert(#list > 0, "K.tour needs at least one stop")
+		K._tours[name] = { stops = list, at = 0 }
+	end
+	local tour = K._tours[name]
+	if not tour then
+		error("no tour '" .. tostring(name) .. "'; pass its stops first", 2)
+	end
+	tour.at += 1
+	local stop = tour.stops[tour.at]
+	if K._frozen and tour.froze then
+		K.unfreeze()
+		tour.froze = nil
+	end
+	if not stop then
+		K._tours[name] = nil
+		K.release()
+		return name .. " done"
+	end
+	K.cam(stop.cf, nil, { fov = stop.fov })
+	if RunService:IsRunning() then
+		RunService.RenderStepped:Wait()
+	end
+	if stop.freeze then
+		K.freeze()
+		tour.froze = true
+	end
+	return string.format("%s %d/%d %s", name, tour.at, #tour.stops, stop.label)
+end
+
 -- Files ---------------------------------------------------------------------
 
 -- Serialize an instance tree to Rojo .model.json (non-default properties, tags, attributes) so Studio-built
--- basic objects can live in the project. Use native Rojo syncback for meshes, UI, rigs and effects.
+-- objects can live in the project: parts, spawns, seats, trusses, attachments, lights, emitters, prompts.
+-- Other classes are refused: use native Rojo syncback for UI, rigs and the like.
+-- A MeshPart exports as a reference to its uploaded MeshId, not as geometry: the id must stay available to
+-- the place's owner, and collision comes from the asset. Runtime Geo meshes have no id and are refused.
 local EXPORT_CLASSES = {
 	Folder = true,
 	Model = true,
 	Part = true,
 	WedgePart = true,
 	CornerWedgePart = true,
+	MeshPart = true,
+	SpawnLocation = true,
+	Seat = true,
+	TrussPart = true,
+	Attachment = true,
+	ParticleEmitter = true,
+	ProximityPrompt = true,
 	PointLight = true,
 	SpotLight = true,
 	SurfaceLight = true,
@@ -411,6 +636,54 @@ local PROPS = {
 	"ModelStreamingMode",
 	"LevelOfDetail",
 }
+-- Properties only one class needs; on PROPS they would also pick up derived values on parts.
+local CLASS_PROPS = {
+	MeshPart = { "MeshId", "TextureID", "CollisionFidelity", "RenderFidelity" },
+	SpawnLocation = { "Neutral", "TeamColor", "Duration", "AllowTeamChangeOnTouch" },
+	Seat = { "Disabled" },
+	TrussPart = { "Style" },
+	Attachment = { "Visible" },
+	ParticleEmitter = {
+		"Acceleration",
+		"Drag",
+		"EmissionDirection",
+		"FlipbookFramerate",
+		"FlipbookLayout",
+		"FlipbookMode",
+		"FlipbookStartRandom",
+		"Lifetime",
+		"LightEmission",
+		"LightInfluence",
+		"LockedToPart",
+		"Orientation",
+		"Rate",
+		"RotSpeed",
+		"Rotation",
+		"ShapeInOut",
+		"ShapePartial",
+		"ShapeStyle",
+		"Speed",
+		"SpreadAngle",
+		"Squash",
+		"TimeScale",
+		"VelocityInheritance",
+		"WindAffectsDrag",
+		"ZOffset",
+	},
+	ProximityPrompt = {
+		"ActionText",
+		"ObjectText",
+		"KeyboardKeyCode",
+		"GamepadKeyCode",
+		"HoldDuration",
+		"MaxActivationDistance",
+		"RequiresLineOfSight",
+		"ClickablePrompt",
+		"Exclusivity",
+		"Style",
+		"UIOffset",
+	},
+}
 local defaults = {}
 local function encode(v: any)
 	local t = typeof(v)
@@ -435,8 +708,32 @@ local function encode(v: any)
 			},
 		}
 	end
+	if t == "Vector2" then
+		return { Vector2 = { v.X, v.Y } }
+	end
+	if t == "BrickColor" then
+		return { BrickColor = v.Number }
+	end
+	if t == "NumberRange" then
+		return { NumberRange = { v.Min, v.Max } }
+	end
+	if t == "NumberSequence" then
+		local keys = {}
+		for _, key in ipairs(v.Keypoints) do
+			table.insert(keys, { time = key.Time, value = key.Value, envelope = key.Envelope })
+		end
+		return { NumberSequence = { keypoints = keys } }
+	end
+	if t == "ColorSequence" then
+		local keys = {}
+		for _, key in ipairs(v.Keypoints) do
+			table.insert(keys, { time = key.Time, color = { key.Value.R, key.Value.G, key.Value.B } })
+		end
+		return { ColorSequence = { keypoints = keys } }
+	end
 	return nil
 end
+K.encode = encode
 local function attribute(v)
 	local kind = typeof(v)
 	local explicit = { boolean = "Bool", number = "Float64", string = "String", Vector3 = "Vector3", Color3 = "Color3" }
@@ -459,13 +756,16 @@ local function node(i: any)
 	if i:IsA("BasePart") then
 		assert(i.CustomPhysicalProperties == nil, "CustomPhysicalProperties require native Rojo syncback")
 	end
+	if i:IsA("MeshPart") then
+		assert(i.MeshId ~= "", "MeshPart has no uploaded MeshId (runtime Geo mesh?); use native Rojo syncback")
+	end
 	local n = { name = i.Name, className = i.ClassName }
 	local ok, def = pcall(function()
 		defaults[i.ClassName] = defaults[i.ClassName] or Instance.new(i.ClassName)
 		return defaults[i.ClassName]
 	end)
 	local props, any = {}, false
-	for _, k in ipairs(PROPS) do
+	local function read(k: any)
 		local okv, v = pcall(function()
 			return i[k]
 		end)
@@ -475,6 +775,12 @@ local function node(i: any)
 				props[k], any = e, true
 			end
 		end
+	end
+	for _, k in ipairs(PROPS) do
+		read(k)
+	end
+	for _, k in ipairs(CLASS_PROPS[i.ClassName] or {}) do
+		read(k)
 	end
 	local tags = i:GetTags()
 	if #tags > 0 then
@@ -641,6 +947,33 @@ function K.perf(top: any)
 	)
 end
 
+local DEPRECATED = {
+	{ "%f[%w_.]wait%(", "wait() -> task.wait()" },
+	{ "%f[%w_.]spawn%(", "spawn() -> task.spawn()" },
+	{ "%f[%w_.]delay%(", "delay() -> task.delay()" },
+	{ ":connect%(", ":connect -> :Connect" },
+	{ "Instance%.new%([^,%)]+,", "Instance.new(class, parent) -> set Parent last" },
+	-- Only the Humanoid method is deprecated; "animator:LoadAnimation(" and "(x :: Animator):LoadAnimation(" are right.
+	{
+		":LoadAnimation%(",
+		"Humanoid:LoadAnimation -> Animator:LoadAnimation",
+		"[Aa]nimator[%w_%s%):]*:LoadAnimation%(",
+	},
+	{ "%f[%w_]loadstring%(", "loadstring is disabled in live games" },
+	{ '"ClickDetector"', "ClickDetector: no console/gamepad support; prefer ProximityPrompt" },
+}
+
+-- Audit findings for one line of source.
+function K.lintLine(line: any)
+	local found = {}
+	for _, rule in ipairs(DEPRECATED) do
+		if line:find(rule[1]) and not (rule[3] and line:find(rule[3])) then
+			table.insert(found, rule[2])
+		end
+	end
+	return found
+end
+
 -- Pre-publish audit: deprecated APIs, input that doesn't work on every platform, risky remotes, leftovers.
 function K.audit()
 	if game:GetService("RunService"):IsRunning() then
@@ -655,16 +988,6 @@ function K.audit()
 			table.insert(issues, s)
 		end
 	end
-	local deprecated = {
-		{ "%f[%w_.]wait%(", "wait() -> task.wait()" },
-		{ "%f[%w_.]spawn%(", "spawn() -> task.spawn()" },
-		{ "%f[%w_.]delay%(", "delay() -> task.delay()" },
-		{ ":connect%(", ":connect -> :Connect" },
-		{ "Instance%.new%([^,%)]+,", "Instance.new(class, parent) -> set Parent last" },
-		{ "LoadAnimation", "Humanoid:LoadAnimation -> Animator:LoadAnimation" },
-		{ "%f[%w_]loadstring%(", "loadstring is disabled in live games" },
-		{ '"ClickDetector"', "ClickDetector: no console/gamepad support; prefer ProximityPrompt" },
-	}
 	for _, d in ipairs(game:GetDescendants()) do
 		if d:IsA("LuaSourceContainer") and d.Name ~= "MCPKit" and SESok then
 			if d:IsA("BaseScript") and d.Disabled then
@@ -676,10 +999,8 @@ function K.audit()
 				for line in (src .. "\n"):gmatch("(.-)\n") do
 					n += 1
 					if not line:match("^%s*%-%-") then
-						for _, rule in ipairs(deprecated) do
-							if line:find(rule[1]) then
-								add(K.path(d) .. ":" .. n .. " " .. rule[2])
-							end
+						for _, issue in ipairs(K.lintLine(line)) do
+							add(K.path(d) .. ":" .. n .. " " .. issue)
 						end
 						if line:find("OnServerEvent") and not src:find("typeof%(") and not src:find("Net%.") then
 							add(

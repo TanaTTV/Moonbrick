@@ -8,15 +8,22 @@ workflow, how to prompt, what the creative Kit can do, and where its limits are.
 1. **Brief.** Claude asks at most three questions (the moment that matters, references, mood or genre mix).
    If you'd rather not decide, it proposes three contrasting directions and you pick or mix.
 2. **Record.** The direction goes into `docs/design.md` (Art direction section) and `assets/art.json`
-   (`style`: palette, genres, references, UI tokens, motion). `python KIT/scripts/assets.py theme
-   assets/art.json --output src/shared/ArtStyle.luau` turns it into code (`UI.useTheme` + an `Fx`
+   (`style`: palette, genres, references, UI tokens, motion). The plugin's `assets.py theme` command
+   turns it into code (`UI.useTheme` + an `Fx`
    palette), so the look lives in one place.
 3. **Build** with the creative Kit (`tools/KIT_CREATIVE.md`): effects, motion, poses, audio, textures and
    procedural meshes, all driven by that palette.
 4. **Review with screenshots.** Claude freezes the key moments, names the three biggest weaknesses, fixes
-   them and recaptures until a round finds nothing important. Stills can't prove motion: **you watch the
-   moving version** and say what's off. Claude records the why in `docs/design.md` ("What works" /
-   "Avoid").
+   them and recaptures, for at most three rounds. The `art-critic` agent can then score the result against
+   `art.json` without having built it. Stills can't prove motion: **you watch the moving version** and say
+   what's off. Claude records the why in `docs/design.md` ("What works" / "Avoid").
+
+Three skills do the specialist work:
+
+- **`level-design`** for maps: a text map first (areas, paths, the moment in each), then a greybox at real
+  Roblox scale, a test jump, a walkthrough, dressing and a review tour.
+- **`vfx`** for effects: silhouette first, timed layers, contact-sheet review of 4 to 6 frozen moments.
+- **`assets`** for 3D models: picks Parts, `Geo` or Blender, and can model in Blender through its MCP.
 
 ## Prompting examples
 
@@ -47,13 +54,17 @@ specific artwork, and it won't commit someone else's image to your repo.
 
 | Module | Use it for | Notes |
 |---|---|---|
-| `Fx` | Layered effects: particles, meshes (ball, ring, torus, shard…), beams, lights, sounds, camera (shake, FOV, flash, grade), debris, events | One shared scheduler; pooled; `Low`/`Medium`/`High` quality from the player's graphics setting; markers (`handle:on`), hitstop (`handle:freeze`), time scale. Extends the V1 `VFX` API, which still works unchanged. |
+| `Fx` | Layered effects: particles, meshes (ball, ring, torus, shard…), beams, lights, sounds, camera (shake, FOV, flash, grade), debris, events; `Fx.ambience` for lasting dust, fog and fireflies | One shared scheduler; pooled; `Low`/`Medium`/`High` quality from the player's graphics setting; markers (`handle:on`), hitstop (`handle:freeze`), time scale. Extends the V1 `VFX` API, which still works unchanged. |
 | `Motion` | Easing curves, keyframes, springs, tweens | Named eases (`backOut`, `anticipate`, `expoIn`…), sub-stepped springs. |
 | `Pose` | Procedural R15/R6 poses and short clips with markers, blending, rig checks | Plays via `Transform`; also wraps `Animator` tracks and their markers. |
 | `Audio` | Roblox-native sounds, groups, positional cues, pitch variation, loops | Placeholder sounds from `scripts/sfx.py` (synthesised locally, no licensing questions). |
 | `Tex` | Effect textures (glow, ring, spark, star, smoke flipbooks…) | `scripts/fxtex.py` renders matching PNGs. |
 | `Geo` | Procedural meshes: lathe, torus, tube, extrude, sphere, vertex colours; "spots" dressed on clients | Props without Blender or uploads. |
-| `UI` | Themed panels, buttons, labels | `UI.useTheme` tokens: fonts, corners, button fill (gradient/flat/outline), panel surface, outlines. V1 defaults unchanged. |
+| `UI` | Themed panels, buttons, labels; safe-area HUD, anchors, scaling, bars, tabs, modals, scroll, grids | `UI.useTheme` tokens: fonts, corners, button fill (gradient/flat/outline), panel surface, outlines. V1 defaults unchanged. |
+| `Scene` | Lighting, atmosphere, sky and grade from `art.json`; blended zones; terrain sculpt and paint | Applied only when a script calls it (`ArtStyle.applyScene()`). |
+| `Scatter` | Seeded placement over terrain or parts, with slope limits and avoid areas | Same seed, same layout. |
+| `GeoShapes` | Ten built-in low-poly props, from rocks to barrels | Spots save and replicate; clients build the meshes. |
+| `Camera` | Follow, top-down and shoulder rigs, cutscene paths | Client-side; one rig at a time. |
 
 ## Limits, honestly
 
@@ -73,12 +84,27 @@ specific artwork, and it won't commit someone else's image to your repo.
   live-game status is unverified, so V1.1 uses `UI.useTheme` tokens instead.
 - **Visual review** works from stills. Timing, pacing and feel need a human watching.
 - **Measured on one PC.** Frame time and cleanup were measured in Studio on a desktop; no phone was tested.
+  The phone rules in `level-design` are working rules, not measurements.
+- **Levels.** A walkthrough proves a route can be walked, not that it's fun. Movement numbers in
+  `level-design` are Roblox defaults plus arithmetic, so each game confirms them with a test jump.
+- **Terrain and hand-placed world** stay in the place file, so save the place. Scene settings live in
+  `art.json` and reach the place only when you apply them.
+- **Blender meshes.** The modelling loop judges from Blender views. How a mesh looks under Roblox lighting
+  is only known after your manual import, and the importer's Meters setting hasn't been exercised in our
+  Studio evidence, so the first import gets measured.
 
 ## 3D assets
 
-Three routes, from lightest to heaviest:
-1. **Procedural (`Geo`)**: lathed, extruded and tubed shapes with vertex colours, dressed on the client
-   No tools, no uploads, stylised low-poly look.
-2. **Parts and the world folder**: classic Roblox building, exported to `src/world/*.model.json`.
-3. **Blender (optional, `moonbrick:assets`)**: `assets/art.json` sets budgets and style; `assets.py export`
-   validates and exports FBX locally. Import, upload and rig correctness are separate, manual gates.
+Pick the lightest route that holds the shape:
+
+1. **Parts** for anything box-shaped: floors, walls, platforms. Exported to `src/world/*.model.json`.
+2. **Procedural (`Geo`)** for simple repeated props: lathed, extruded and tubed shapes with vertex colours,
+   dressed on the client. No tools, no uploads, stylised low-poly look.
+3. **Blender (optional)** for hero objects and anything rigged. If the Blender MCP is connected, Claude
+   creates the `.blend`, looks at it from several angles, fixes the top 3 weaknesses against `art.json` for
+   at most three rounds, then exports. `assets/art.json` sets budgets and style; `assets.py export` validates
+   and exports FBX locally. If Blender isn't available, Claude says so and asks before using a stand-in.
+
+**Importing is manual.** No Studio MCP tool imports a local FBX, so you run File → Import yourself; the skill
+gives the settings. Claude then checks size and looks at the result. A failed export or import is reported
+with its exact error. Claude won't quietly replace your model with something else.

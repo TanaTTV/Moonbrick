@@ -1,0 +1,18 @@
+# Export and import details
+
+Facts behind the `assets` skill. Read the section you need.
+
+## Manifest and export
+- Author in Metric, unit scale 1 (meters); name export roots explicitly. Assets include selected roots and their descendants. For rigs include the armature and skinned meshes.
+- `assets.py validate` prints one compact summary. Inspect only relevant scene objects and materials, not the whole Blender datablock tree.
+- `assets.py export` uses native background Blender with embedded-script autoexecution disabled. It validates triangles, materials and texture sizes, exports FBX, keeps source hashes and a report. It never overwrites prior exports and never saves the input `.blend`.
+- Review `report.json` and the output `art.json` asset `export` records (the source manifest stays unchanged). They record maps, hashes, colorspaces, bone hierarchy, skin budgets, clip ranges, fps and keyed bones. Use the source manifest for future exports. Native round-trip and Studio tests are separate gates.
+
+## PBR
+Set `pbr: true` on an asset to require all four SurfaceAppearance maps on every material. Use an active Principled BSDF with directly connected image nodes for Base Color, Roughness and Metallic; connect the normal image through a tangent-space Normal Map node. `ColorMap` uses sRGB; `NormalMap`, `RoughnessMap` and `MetalnessMap` use Non-Color. SurfaceAppearance map dimensions must be powers of two; other textures may use non-power-of-two dimensions (for example 300×200). Every texture still obeys its asset `maxTextureSize` budget; PBR `maxTextureSize` must be at most 1024 (a pipeline budget). Export emits `<id>_<material-index>_<Map>.png` alongside FBX. All four PNGs are recorded for manual SurfaceAppearance assignment; FBX base-color and normal links are regression-tested. Shader baking, procedural shader graphs, other PBR channels and arbitrary node transformations are not covered. Roblox expects OpenGL normal maps; review orientation and shading in Studio. See [SurfaceAppearance](https://create.roblox.com/docs/reference/engine/classes/SurfaceAppearance).
+
+## Rigs
+For `kind: "rig"`, optional `maxBones` defaults to 128 (pipeline ceiling) and `maxInfluences` defaults to 4 (hard ceiling of four positive deform-bone weights per vertex). Lower budgets are allowed. Every skinned vertex needs a positive weight. Only one enabled vertex-group armature modifier is supported per skinned mesh; apply other modifiers first. Bone envelopes and weights on non-deform bones are refused. Set `animation: true` for one active bone-keyed action per rig, mute NLA tracks, and use integer clip endpoints. Multiple selected rigs must share a frame range; export bakes every frame at scene fps, with no key simplification. NLA or multiple-clip export and avatar/R15 compliance are not validated.
+
+## Rig and animation import (manual Studio step)
+FBX rig and animation import goes through the [3D Importer](https://create.roblox.com/docs/studio/importer) and [Animation Editor](https://create.roblox.com/docs/animation/editor). Import the rig, then select it in Animation Editor and use Import → From File for the FBX clip. In its Import Settings, set **Rest Pose Source** to **Imported Rig** and use the same Scale Unit as the rig import. The default *Imported Rig (Zeroed Rotations)* bakes the exporter's −90° X axis conversion into the root bone keys, so the rig plays lying flat. Don't use the clip the 3D Importer saves on its own (`RBX_ANIMSAVES/<rig>/Scene`): its top pose is named after the Blender armature, so root-bone keys are ignored. Check bone mapping, timing, scale, deformation and playback before accepting; upload or publication still requires explicit approval.

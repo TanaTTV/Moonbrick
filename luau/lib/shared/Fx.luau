@@ -64,7 +64,7 @@ export type Layer = {
 	rotation: { number }?,
 	rotSpeed: { number }?,
 	zOffset: number?,
-	shape: string?,
+	shape: string?, -- mesh: ball, block, cylinder, ring, torus, shard, wedge. Particles: Box, Sphere, Cylinder, Disc
 	shapeSize: (number | Vector3)?,
 	direction: Vector3?,
 	orientation: string?,
@@ -127,12 +127,17 @@ Fx.Palette = {
 	spark = Color3.fromRGB(255, 236, 170),
 } :: { [string]: Color3 }
 
+-- Default debris chunk lifetime { min, max }, and how long a chunk outlives it before Debris removes it.
+local DEBRIS_LIFETIME = { 1.6, 2.4 }
+local DEBRIS_LINGER = 0.1
 local QUALITY_RANK: { [string]: number } = { Low = 1, Medium = 2, High = 3 }
 local QUALITY_COUNT: { [string]: number } = { Low = 0.35, Medium = 0.65, High = 1 }
 local MAX_EMIT = 400
 local MAX_SECONDS = 20
--- Real seconds after which any effect is stopped, whatever its time scale or freezes (leak guard).
+-- Real seconds an effect may run before it is stopped, whatever its time scale (leak guard). Time spent
+-- frozen doesn't count, so a capture can hold a frozen effect as long as it needs.
 local WATCHDOG_SECONDS = MAX_SECONDS * 3
+local WATCHDOG_TICK = 5
 local POOL_SIZE = 4
 
 local defaultQuality: Quality? = nil
@@ -156,8 +161,11 @@ function Fx.getQuality(): Quality
 	return quality
 end
 
+local refreshAmbience: () -> () = function() end
+
 function Fx.setQuality(quality: Quality?)
 	defaultQuality = quality
+	refreshAmbience()
 end
 
 -- Particle count after the quality multiplier (pure; tested).
@@ -226,7 +234,8 @@ function Fx.layerEnd(layer: Layer): number
 		local last = if keys and #keys > 0 then keys[#keys][1] else 0
 		return at + math.max(layer.duration or 0, last)
 	elseif layer.kind == "debris" then
-		return at + (if layer.lifetime then layer.lifetime[2] or layer.lifetime[1] else 2)
+		local life = layer.lifetime or DEBRIS_LIFETIME
+		return at + (life[2] or life[1]) + DEBRIS_LINGER
 	elseif layer.kind == "camera" then
 		return at + (if layer.shake then layer.shake[1] else 0)
 	end
@@ -459,6 +468,24 @@ local function step(self: Internal, dt: number): boolean
 	return false
 end
 
+local function isFrozen(self: Internal): boolean
+	return self._freezes > 0 or self._scale == 0 or Scheduler.getTimeScale() == 0
+end
+
+local function watch(self: Internal, awake: number)
+	task.delay(WATCHDOG_TICK, function()
+		if self.finished then
+			return
+		end
+		local total = if isFrozen(self) then awake else awake + WATCHDOG_TICK
+		if total >= WATCHDOG_SECONDS then
+			Handle.stop(self)
+		else
+			watch(self, total)
+		end
+	end)
+end
+
 local function newHandle(
 	root: Model,
 	anchor: BasePart,
@@ -487,7 +514,7 @@ local function newHandle(
 		_attached = {},
 	}, Handle) :: any
 	handles[self] = true
-	task.delay(WATCHDOG_SECONDS, Handle.stop, self)
+	watch(self, 0)
 	return self
 end
 
@@ -899,7 +926,7 @@ local function buildDebris(ctx: Ctx, layer: Layer)
 	local count = Fx.countFor(layer.count or 8, ctx.quality, 1)
 	local sizes = layer.sizeRange or { 0.4, 1.2 }
 	local speed = layer.speed or { 20, 45 }
-	local life = layer.lifetime or { 1.6, 2.4 }
+	local life = layer.lifetime or DEBRIS_LIFETIME
 	at(ctx.handle, layer.at or 0, function()
 		local origin = worldPosition(ctx, layer)
 		local rng = Random.new()
@@ -926,7 +953,7 @@ local function buildDebris(ctx: Ctx, layer: Layer)
 				{ Size = chunk.Size * 0.1, Transparency = 1 },
 				{ time = 0.5, delay = lifetime - 0.5, ease = "quadIn" }
 			)
-			Debris:AddItem(chunk, lifetime + 0.1)
+			Debris:AddItem(chunk, lifetime + DEBRIS_LINGER)
 		end
 	end)
 	ctx.handle._ending = math.max(ctx.handle._ending, Fx.layerEnd(layer))
@@ -948,8 +975,246 @@ local live = 0
 -- Global time scale for every playing effect and the shared scheduler (0 freezes a frame for review).
 function Fx.setGlobalTimeScale(scale: number)
 	Scheduler.setTimeScale(scale)
+end
+
+local ambienceScales: { [ParticleEmitter]: number } = {}
+
+Scheduler.onTimeScale(function(global)
 	for handle in handles do
 		applyScale(handle, handle._scale)
+	end
+	for emitter, authored in ambienceScales do
+		emitter.TimeScale = math.clamp(authored * global, 0, 1)
+	end
+end)
+
+-- A persistent emitter layer in a `Fx.Ambience` preset. `density` is live particles per 1000 cubic studs;
+-- `budget` caps them at High quality.
+export type AmbienceLayer = {
+	texture: string,
+	density: number,
+	budget: number?,
+	lifetime: { number },
+	size: NumberKeys,
+	transparency: NumberKeys,
+	color: ColorSpec,
+	speed: { number }?,
+	acceleration: Vector3?,
+	drag: number?,
+	lightEmission: number?,
+	rotSpeed: { number }?,
+	minQuality: Quality?,
+}
+export type AmbienceOptions = {
+	palette: { [string]: Color3 }?,
+	parent: Instance?,
+	follow: (BasePart | Camera)?, -- the region keeps centred on this
+	density: number?, -- multiplies every layer
+}
+
+-- Ambience presets. Add your own: `Fx.Ambience.pollen = { { texture = "dust", ... } }`.
+Fx.Ambience = {
+	dust = {
+		{
+			texture = "dust",
+			density = 0.6,
+			budget = 160,
+			lifetime = { 6, 11 },
+			size = { { 0, 0 }, { 0.2, 0.22 }, { 0.8, 0.16 }, { 1, 0 } },
+			transparency = { { 0, 1 }, { 0.25, 0.55 }, { 0.75, 0.6 }, { 1, 1 } },
+			color = "core",
+			speed = { 0.2, 0.7 },
+			acceleration = Vector3.new(0.08, 0.02, 0.05),
+			lightEmission = 0.4,
+			rotSpeed = { -30, 30 },
+		},
+	},
+	fog = {
+		{
+			texture = "wisp",
+			density = 0.05,
+			budget = 28,
+			lifetime = { 12, 20 },
+			size = { { 0, 18 }, { 1, 30 } },
+			transparency = { { 0, 1 }, { 0.3, 0.84 }, { 0.7, 0.86 }, { 1, 1 } },
+			color = "smoke",
+			speed = { 0.4, 1.2 },
+			acceleration = Vector3.new(0.15, 0, 0.05),
+			lightEmission = 0.1,
+			rotSpeed = { -6, 6 },
+		},
+		{
+			texture = "smoke",
+			density = 0.02,
+			budget = 12,
+			lifetime = { 14, 22 },
+			size = { { 0, 30 }, { 1, 46 } },
+			transparency = { { 0, 1 }, { 0.4, 0.9 }, { 1, 1 } },
+			color = "smoke",
+			speed = { 0.2, 0.6 },
+			rotSpeed = { -4, 4 },
+			minQuality = "High" :: Quality,
+		},
+	},
+	fireflies = {
+		{
+			texture = "glow",
+			density = 0.12,
+			budget = 60,
+			lifetime = { 5, 9 },
+			size = { { 0, 0.34 }, { 1, 0.3 } },
+			-- Slow double pulse: each fly blinks twice in its life.
+			transparency = {
+				{ 0, 1 },
+				{ 0.15, 0.1 },
+				{ 0.3, 0.85 },
+				{ 0.5, 1 },
+				{ 0.65, 0.1 },
+				{ 0.85, 0.9 },
+				{ 1, 1 },
+			},
+			color = "spark",
+			speed = { 0.5, 1.6 },
+			drag = 1,
+			lightEmission = 1,
+		},
+	},
+	embers = {
+		{
+			texture = "spark",
+			density = 0.3,
+			budget = 120,
+			lifetime = { 3, 6 },
+			size = { { 0, 0.2 }, { 0.7, 0.14 }, { 1, 0 } },
+			transparency = { { 0, 0.1 }, { 0.8, 0.3 }, { 1, 1 } },
+			color = { "spark", "glow", "dark" },
+			speed = { 1, 3 },
+			acceleration = Vector3.new(0.3, 1.6, 0.2),
+			lightEmission = 1,
+			rotSpeed = { -120, 120 },
+		},
+	},
+} :: { [string]: { AmbienceLayer } }
+
+-- Emitter rate holding a layer's live particle count in a volume (pure; tested): density, then the
+-- budget, then the quality multiplier. Zero when the layer's minQuality rules it out.
+function Fx.ambienceRate(layer: AmbienceLayer, volume: number, quality: Quality, density: number?): number
+	if layer.minQuality and (QUALITY_RANK[quality] or 3) < (QUALITY_RANK[layer.minQuality] or 1) then
+		return 0
+	end
+	local alive = layer.density * (density or 1) * volume / 1000
+	local capped = math.min(alive, layer.budget or 200) * (QUALITY_COUNT[quality] or 1)
+	local lifetime = (layer.lifetime[1] + (layer.lifetime[2] or layer.lifetime[1])) / 2
+	return capped / lifetime
+end
+
+type Ambience = { volume: number, density: number?, emitters: { { emitter: ParticleEmitter, layer: AmbienceLayer } } }
+local ambiences: { [Ambience]: boolean } = {}
+
+refreshAmbience = function()
+	local quality: Quality = Fx.getQuality()
+	for ambience in ambiences do
+		for _, entry in ambience.emitters do
+			local rate = Fx.ambienceRate(entry.layer, ambience.volume, quality, ambience.density)
+			entry.emitter.Rate = rate
+			entry.emitter.Enabled = rate > 0
+		end
+	end
+end
+
+local function ambienceEmitter(holder: BasePart, layer: AmbienceLayer, palette: { [string]: Color3 }): ParticleEmitter
+	local e = Instance.new("ParticleEmitter")
+	e.Name = layer.texture
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	local life, speed, spin = layer.lifetime, layer.speed or { 0, 0 }, layer.rotSpeed or { 0, 0 }
+	e.Lifetime = NumberRange.new(life[1], life[2] or life[1])
+	e.Speed = NumberRange.new(speed[1], speed[2] or speed[1])
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Acceleration = layer.acceleration or Vector3.zero
+	e.Drag = layer.drag or 0
+	e.Size = Fx.numberSequence(layer.size, 1)
+	e.Transparency = Fx.numberSequence(layer.transparency, 0)
+	e.Color = Fx.colorSequence(layer.color, palette)
+	e.LightEmission = layer.lightEmission or 0.5
+	e.LightInfluence = 0
+	e.Rotation = NumberRange.new(0, 360)
+	e.RotSpeed = NumberRange.new(spin[1], spin[2] or spin[1])
+	Tex.apply(e, layer.texture)
+	e.Parent = holder
+	return e
+end
+
+-- Starts a persistent particle layer in a box and returns `stop(fade)`. `region` is a part (its
+-- CFrame and size are read once) or { center, size }; `preset` is a `Fx.Ambience` name. It runs until
+-- stopped: no watchdog applies, quality changes adjust it and a global freeze holds it. Fog needs
+-- `Tex.usePreview` or uploaded files to look its best. Client-side; don't parent it where it replicates.
+function Fx.ambience(
+	region: BasePart | { center: Vector3, size: Vector3 },
+	preset: string,
+	opts: AmbienceOptions?
+): (number?) -> ()
+	local o: AmbienceOptions = opts or {}
+	local layers = Fx.Ambience[preset]
+	assert(layers, `Fx.ambience: unknown preset '{preset}'`)
+	local cf: CFrame
+	local size: Vector3
+	if typeof(region) == "Instance" then
+		local part = region :: BasePart
+		cf, size = part.CFrame, part.Size
+	else
+		local box = region :: { center: Vector3, size: Vector3 }
+		cf, size = CFrame.new(box.center), box.size
+	end
+	local holder = effectPart(`Ambience_{preset}`, "block", "SmoothPlastic")
+	holder.Size = size
+	holder.CFrame = cf
+	local palette = table.clone(Fx.Palette)
+	local overrides: { [string]: Color3 } = o.palette or {}
+	for role, color in overrides do
+		palette[role] = color
+	end
+	local ambience: Ambience = { volume = size.X * size.Y * size.Z, density = o.density, emitters = {} }
+	local longest = 0
+	for _, layer in layers do
+		local emitter = ambienceEmitter(holder, layer, palette)
+		table.insert(ambience.emitters, { emitter = emitter, layer = layer })
+		ambienceScales[emitter] = 1
+		emitter.TimeScale = math.clamp(Scheduler.getTimeScale(), 0, 1)
+		longest = math.max(longest, layer.lifetime[2] or layer.lifetime[1])
+	end
+	ambiences[ambience] = true
+	refreshAmbience()
+	holder.Parent = o.parent or workspace
+	local stopFollow: (() -> ())? = nil
+	local follow = o.follow
+	if follow then
+		stopFollow = Scheduler.every(function()
+			if follow.Parent then
+				local there = if follow:IsA("Camera") then follow.CFrame else (follow :: BasePart).CFrame
+				holder.CFrame = CFrame.new(there.Position)
+			end
+			return false
+		end)
+	end
+	local stopped = false
+	return function(fade: number?)
+		if stopped then
+			return
+		end
+		stopped = true
+		ambiences[ambience] = nil
+		if stopFollow then
+			stopFollow()
+		end
+		for _, entry in ambience.emitters do
+			entry.emitter.Enabled = false
+			ambienceScales[entry.emitter] = nil
+		end
+		-- Particles already alive finish their lives unless the caller wants them gone sooner.
+		task.delay(fade or longest, function()
+			holder:Destroy()
+		end)
 	end
 end
 
@@ -1088,10 +1353,14 @@ local function emitCollect(self: Internal, root: Instance, quality: Quality, pla
 			if count == nil and duration == nil then
 				continue
 			end
+			-- Pooled copies reuse emitters whose TimeScale a freeze or slow-mo changed: keep the authored one.
+			local storedScale = inst:GetAttribute("FxTimeScale")
+			local authored = if type(storedScale) == "number" then storedScale else inst.TimeScale
+			inst:SetAttribute("FxTimeScale", authored)
 			table.insert(self._emitters, inst)
-			self._authoredScale[inst] = inst.TimeScale
+			self._authoredScale[inst] = authored
 			inst.Enabled = false
-			local lifetime = inst.Lifetime.Max / math.max(inst.TimeScale, 0.05)
+			local lifetime = inst.Lifetime.Max / math.max(authored, 0.05)
 			if count then
 				local n = Fx.countFor(count, quality, 1)
 				at(self, delay, function()

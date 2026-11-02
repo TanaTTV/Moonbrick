@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVICES = ("ReplicatedStorage", "ServerScriptService", "ServerStorage", "StarterGui", "StarterPlayer", "ReplicatedFirst")
 SCRIPT_CLASSES = ("Script", "LocalScript", "ModuleScript")
 CATEGORIES = ("missing", "extra", "class", "name_path_parent", "order", "source", "attributes", "tags", "properties", "references", "duplicate_ambiguity")
+GAME_FOLDERS = ((("ReplicatedStorage", 0), ("Shared", 0)), (("ServerScriptService", 0), ("Server", 0)),
+                (("StarterPlayer", 0), ("StarterPlayerScripts", 0), ("Client", 0)))
 KIT_ROOTS = (("ReplicatedStorage", "Kit"), ("ServerScriptService", "Kit"), ("ServerStorage", "MCPKit"), ("ServerStorage", "Tests"))
 EXPECTED_REASONS = {
     "source_crlf": "Rojo 7.7.1 src/snapshot_middleware/lua.rs:66 (LF-normalized file reads); skills/import/SKILL.md#fidelity-limits",
@@ -427,6 +429,15 @@ def default_properties(directory):
     return {node["class"]: node["props"] for key, node in nodes.items() if len(key) == 2 and key[-1][0].startswith("Default_")}
 
 
+def game_folder_nodes(nodes):
+    """The empty folders import adds so CLAUDE.md's src/server, src/client and src/shared stay mapped."""
+    added = {key: node for key, node in nodes.items() if key in GAME_FOLDERS}
+    assert set(added) == set(GAME_FOLDERS), "import dropped a game folder mapping"
+    assert all(node["class"] == "Folder" for node in added.values()), "a game folder is not a plain Folder"
+    assert not any(key[:len(root)] == root and key != root for key in nodes for root in GAME_FOLDERS), "a game folder is not empty"
+    return added
+
+
 def kit_nodes(nodes):
     return {key: node for key, node in nodes.items() if len(key) > 1 and (key[0][0], key[1][0]) in KIT_ROOTS}
 
@@ -541,7 +552,8 @@ def main():
             expected_sources = Counter(node["source"] for node in imported_baseline.values() if node["class"] in SCRIPT_CLASSES)
             assert extracted_sources == expected_sources, "syncback did not preserve all script file bytes"
             current = managed_snapshot(target)
-            assert all(current.get(path) == digest for path, digest in managed.items()), "scaffold/Kit/managed file changed"
+            # CLAUDE.md gains the "Imported game" section on purpose; the Kit and tools must not change.
+            assert all(current.get(path) == digest for path, digest in managed.items() if path != "CLAUDE.md"), "scaffold/Kit/managed file changed"
             run(["git", "diff", "--cached", "--exit-code"], target)
             cfg = project.read_json(target / "default.project.json")
             assert "Workspace" not in cfg["tree"] and "Lighting" not in cfg["tree"]
@@ -554,7 +566,8 @@ def main():
             kit = kit_nodes(rebuilt)
             kit_counts, kit_details, _ = compare(original_kit, kit)
             assert not sum(kit_counts.values()), "rebuilt Kit changed: " + "\n".join(kit_details)
-            actual = {key: node for key, node in rebuilt.items() if key[0][0] in SERVICES and key not in kit}
+            folders = game_folder_nodes(rebuilt)
+            actual = {key: node for key, node in rebuilt.items() if key[0][0] in SERVICES and key not in kit and key not in folders}
             assert not any(key[0][0] in ("Workspace", "Lighting") for key in rebuilt), "code build owns original world"
             breakdown = Counter()
             counts, details, expected = compare(imported_baseline, actual, defaults, allow_design=True,
