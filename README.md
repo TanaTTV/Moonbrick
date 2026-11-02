@@ -37,6 +37,12 @@
   <br><sub><i>First-person viewmodel, cast choreography, an eye that flies through walls, and Nearsight. Every texture was drawn by code, uploaded, playtested and screenshot-reviewed by Claude.</i></sub>
 </p>
 
+<p align="center">
+  <img src="docs/showcase/moongate-awake.jpg" alt="A stone gate with glowing runes, three lit braziers and two owl statues at dusk" width="760">
+</p>
+
+A 1.1 test level: Blender models shown in Studio with no upload, terrain, scattered props, dusk lighting and a small objective, all built by Claude with Moonbrick.
+
 ## ✨ Why Moonbrick
 
 AI can write Luau, but Roblox development with AI usually goes like this: slow tool calls that dump walls of text, scripts edited blind inside Studio, bugs found only after a playtest, and results that *work* but look low budget.

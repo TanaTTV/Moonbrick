@@ -52,7 +52,7 @@ Check every custom texture before use: `python "${CLAUDE_PLUGIN_ROOT}/scripts/fx
 
 What it can't judge for you: soft falloff for light and crisp edges for matter, and whether the shape says what you meant at 1/4 size.
 
-**Flipbooks:** a one-shot may end on empty cells; a loop must match its first and last frame. More frames means fewer pixels each: at 8x8 of 1024 a cell is 128 px, fine for small sparks and mushy for a screen-filling explosion. Which sheet sizes survive upload isn't settled (`fxcheck.py` notes anything over 1024), so test yours in Studio. Set `FlipbookLayout` before `FlipbookMode`. Passing means one frame shows at each moment in a capture, never the whole grid.
+**Flipbooks:** ignore `FlipbookIncompatible`: Studio 0.743 says "must be 1024 by 1024" even for 1024 sheets, and 512 sheets play fine. To prove a sheet plays, hold one particle and check it shows one frame. a one-shot may end on empty cells; a loop must match its first and last frame. More frames means fewer pixels each: at 8x8 of 1024 a cell is 128 px, fine for small sparks and mushy for a screen-filling explosion. Which sheet sizes survive upload isn't settled (`fxcheck.py` notes anything over 1024), so test yours in Studio. Set `FlipbookLayout` before `FlipbookMode`. Passing means one frame shows at each moment in a capture, never the whole grid.
 
 Previews are visible on this PC only. Before publishing, uploaded ids replace them through `Tex.useFiles`; the `ship` skill checks this.
 
