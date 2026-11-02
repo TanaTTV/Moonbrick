@@ -39,6 +39,54 @@ return function(t: any)
 		end, "PrimaryPart")
 		model:Destroy()
 	end)
+	t.test("spawns, seats, trusses, emitters, prompts and uploaded meshes export with their settings", function()
+		local HttpService = game:GetService("HttpService")
+		local model = Instance.new("Model")
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Neutral = false
+		spawn.TeamColor = BrickColor.new("Bright red")
+		spawn.Parent = model
+		local seat = Instance.new("Seat")
+		seat.Disabled = true
+		seat.Parent = model
+		local truss = Instance.new("TrussPart")
+		truss.Parent = model
+		local attachment = Instance.new("Attachment")
+		attachment.Position = Vector3.new(0, 2, 0)
+		attachment.Parent = spawn
+		local emitter = Instance.new("ParticleEmitter")
+		emitter.Rate = 7
+		emitter.Lifetime = NumberRange.new(1, 2)
+		emitter.Transparency = NumberSequence.new(0.5)
+		emitter.Color = ColorSequence.new(Color3.new(1, 0, 0))
+		emitter.Parent = attachment
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Open"
+		prompt.Parent = spawn
+		local encoded = HttpService:JSONDecode(K.toModelJson(model))
+		local kids = {}
+		for _, child in encoded.children do
+			kids[child.className] = child
+		end
+		t.eq(kids.SpawnLocation.properties.Neutral, false)
+		t.eq(kids.SpawnLocation.properties.TeamColor.BrickColor, spawn.TeamColor.Number)
+		t.eq(kids.Seat.properties.Disabled, true)
+		t.ok(kids.TrussPart ~= nil)
+		local inner = {}
+		for _, child in kids.SpawnLocation.children do
+			inner[child.className] = child
+		end
+		t.eq(inner.ProximityPrompt.properties.ActionText, "Open")
+		local fx = inner.Attachment.children[1].properties
+		t.eq(fx.Rate, 7)
+		t.eq(fx.Lifetime.NumberRange[2], 2)
+		t.ok(fx.Transparency.NumberSequence.keypoints[1] ~= nil)
+		t.eq(fx.Color.ColorSequence.keypoints[1].color[1], 1)
+		model:Destroy()
+		t.fails(function()
+			K.toModelJson(Instance.new("Humanoid"))
+		end, "native Rojo syncback")
+	end)
 	t.test("empty all-replace edits are rejected without looping", function()
 		local module = Instance.new("ModuleScript")
 		t.fails(function()
