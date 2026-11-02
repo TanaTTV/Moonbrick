@@ -1,4 +1,5 @@
 """Read-only advisory scan of imported scripts/assets. Findings are review leads, not a safety certificate."""
+import sys
 import argparse
 import hashlib
 import json
@@ -36,6 +37,7 @@ def scan(root: Path):
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--json", action="store_true")
