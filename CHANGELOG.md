@@ -9,7 +9,7 @@ Beta of the creative engine and design workflow, plugin version 1.1.0-beta.1. **
 - **Cards:** creative APIs live in `tools/KIT_CREATIVE.md` (22 KB, read only for visual work); the core card grew by 0.3 KB.
 - **Fixes:** generated mesh faces were inside-out; clients' 8-mesh EditableMesh limit is handled by baking fixed-size copies.
 - **Fx/Geo review fixes:** torus/shard layers fall back to ring/wedge parts when meshes can't be made (published games without "Allow Mesh & Image APIs"), and a layer that fails to build no longer leaks the effect; `Geo.cached` builds each key once even for concurrent first callers, and `Fx.preload()` warms Fx's mesh shapes at startup; overlapping `freeze` calls no longer freeze forever, and a 60 s real-time watchdog ends any effect; `Fx.play` runs its first step on the next frame, so `:on()` listeners see events at t = 0. Headless tests cover each.
-||||||| 1d847a5
+
 ## 1.0.1 (2026-11-01)
 **Behaviour change:** live player data that can no longer be saved (NaN, invalid UTF-8, mixed keys) now kicks the player by default, keeping the last good save. Set `onSaveInvalid` to handle it yourself.
 - **Removed the demo games** (Crystal Rush, Element Brawl), `scripts/create-example.py` and their CI build to keep the plugin lean. The recipes and template are unchanged.
@@ -30,7 +30,7 @@ First stable release. 4 of 13 stable gates passed in Studio; the other 9 were wa
 ## 1.0.0-beta.1 (2026-10-15, beta)
 Beta, not a stable 1.0. Evidence per requirement, including what was **not** tested, is in [docs/history/V1-BETA-LEDGER.md](docs/history/V1-BETA-LEDGER.md).
 - Live DataStore acceptance passed on a disposable private experience (7/7: round-trip, session-lock contention, stale-lock takeover, shutdown flush, invalid-data refusal + recovery, retry/backoff; no leftovers, 51/60 requests). Not yet run live: real engine shutdown/restart, natural 600 s lock expiry, two-server contention, real provider throttling.
-- Measured Claude Code benchmark ([docs/BENCHMARK.md](docs/BENCHMARK.md), n=3 per condition): with the plugin merely installed the skills were not invoked on a terse prompt; when told to use Moonbrick they were, with session-locked saves in 3/3 runs (vs naive DataStore in 6/6 baseline runs) at about 1.9x median cost. No token saving is claimed. Start with `/moonbrick:new`.
+- Measured Claude Code benchmark ([docs/BENCHMARK.md](docs/BENCHMARK.md), n=3 per condition): with the plugin merely installed the skills were not invoked, even though the 196-word prompt named Moonbrick; when told to use Moonbrick they were, with session-locked saves in 3/3 runs (vs naive DataStore in 6/6 baseline runs) at about 1.9x median cost. No token saving is claimed. Start with `/moonbrick:new`.
 - Remote GitHub marketplace install verified; bench harness path handling fixed for Windows 8.3 and macOS `/private/var` temp directories; benchmark tests run in CI.
 - Rojo startup ownership on Windows walks a native process snapshot instead of PowerShell/WMI (which took up to 20 s, the whole SessionStart budget); the install test stops a Rojo orphaned by a hook timeout on its own port only.
 - Add a confined, artifact-first Claude Code coin-pickup benchmark harness with exact reported accounting and independent headless/static scoring; measured results are in docs/BENCHMARK.md.
