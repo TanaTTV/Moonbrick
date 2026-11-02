@@ -13,13 +13,15 @@
 -- facets. Runtime meshes don't save with the place and DON'T render when made on the server (verified in
 -- Studio 0.743: clients see a "missing mesh" checker). Build them on clients: for world props, put
 -- ordinary parts ("spots") with a `GeoShape` attribute in the world (they save, collide and replicate)
--- and call `Geo.dress(workspace)` from a client script; each spot gets its mesh and turns invisible.
+-- and call `Geo.watch(workspace)` from a client script; each spot gets its mesh and turns invisible.
 -- Clients allow few live growable EditableMeshes (8 in Studio 0.743), so each build is baked into a
 -- fixed-size copy (hundreds allowed) and the builder freed. Still prefer few distinct shapes and many
 -- clones: clones share one mesh.
 -- Published games need Game Settings → Security → "Allow Mesh & Image APIs".
 -- Approach adapted from RoClicks meshlab's lathe/tube/loft helpers and its "shape spot" idea (MIT).
 local AssetService = game:GetService("AssetService")
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 
 local Geo = {}
 
@@ -329,8 +331,9 @@ export type PartOptions = {
 	collision: boolean?,
 }
 
--- The fixed-size meshes behind generated parts. They must stay alive: destroying one blanks every
--- MeshPart made from it, clones included (verified).
+-- The fixed-size meshes behind generated parts. Destroying one blanks every MeshPart made from it,
+-- clones included (verified). The entry goes when its part is destroyed; clones keep the mesh through
+-- their own content reference.
 local baked: { [MeshPart]: EditableMesh } = {}
 
 -- Turns a builder into a MeshPart, centred on its bounds (yields). The builder can't be used afterwards. Model space stays world space:
@@ -351,10 +354,25 @@ function Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart
 	end
 	-- Bake into a fixed-size copy and free the growable builder: clients allow only a handful of live
 	-- growable EditableMeshes (8 measured in Studio 0.743) but hundreds of fixed-size ones.
-	local fixed = AssetService:CreateEditableMeshAsync(Content.fromObject(mesh), { FixedSize = true })
-	mesh:Destroy()
-	local part = AssetService:CreateMeshPartAsync(Content.fromObject(fixed))
+	local bakedOk, fixed: any = pcall(function()
+		return AssetService:CreateEditableMeshAsync(Content.fromObject(mesh), { FixedSize = true })
+	end)
+	mesh:Destroy() -- also when the bake failed: the budget is only a handful of growable meshes
+	if not bakedOk then
+		error(fixed, 0)
+	end
+	local partOk, result: any = pcall(function()
+		return AssetService:CreateMeshPartAsync(Content.fromObject(fixed))
+	end)
+	if not partOk then
+		fixed:Destroy()
+		error(result, 0)
+	end
+	local part: MeshPart = result
 	baked[part] = fixed
+	part.Destroying:Once(function()
+		baked[part] = nil
+	end)
 	part.Name = o.name or "GeoMesh"
 	part.Anchored = o.anchored ~= false
 	part.Material = o.material or Enum.Material.SmoothPlastic
@@ -364,6 +382,17 @@ function Geo.toPart(builder: Builder, opts: PartOptions?): MeshPart
 	end
 	part.CFrame = CFrame.new(centre)
 	return part
+end
+
+-- Destroys a part from `Geo.build` and frees its mesh now. Only for parts that were never cloned: it
+-- blanks clones. Plain `Destroy` is enough otherwise; the mesh then goes with its last clone.
+function Geo.free(part: MeshPart)
+	local mesh = baked[part]
+	baked[part] = nil
+	part:Destroy()
+	if mesh then
+		mesh:Destroy()
+	end
 end
 
 -- Builds a MeshPart in one call (yields).
@@ -421,10 +450,11 @@ function Geo.unitShard(): MeshPart
 	end, { collision = false })
 end
 
--- Shapes that `Geo.dress` can build, by name. `build(builder, params)` builds around the origin at
--- roughly unit size (1 stud across); the spot's size scales it. `params` are the spot's attributes.
 local shapes: { [string]: { build: (Builder, { [string]: any }) -> (), vertexColors: boolean } } = {}
 
+-- Adds a shape `Geo.dress` and `Geo.watch` can build for spots with `GeoShape = name`. `build(b, params)`
+-- makes it around the origin; the mesh is then stretched to the spot's size. `params` are the spot's
+-- attributes. `vertexColors = true`: the shape paints itself (setColor/colorAt), else it takes the spot's Color.
 function Geo.register(name: string, build: (Builder, { [string]: any }) -> (), opts: { vertexColors: boolean? }?)
 	shapes[name] = { build = build, vertexColors = opts ~= nil and opts.vertexColors == true }
 end
@@ -442,47 +472,159 @@ local function paramKey(name: string, params: { [string]: any }): string
 	return table.concat(parts, "|")
 end
 
+-- Tag for spots that gain a `GeoShape` after they are parented; `Geo.watch` picks these up too.
+Geo.SpotTag = "GeoSpot"
+
+type DressResult = "dressed" | "skipped" | "failed"
+
+local function dressSpot(spot: Instance): (DressResult, string?)
+	local shape = spot:GetAttribute("GeoShape")
+	if type(shape) ~= "string" or not spot:IsA("BasePart") or spot:GetAttribute("GeoDressed") then
+		return "skipped"
+	end
+	local entry = shapes[shape]
+	if not entry then
+		warn(`Geo.dress: no shape registered as '{shape}' ({spot:GetFullName()})`)
+		return "skipped"
+	end
+	local params: { [string]: any } = spot:GetAttributes()
+	params.GeoShape, params.GeoDressed = nil, nil
+	local ok, template = pcall(Geo.cached, paramKey(shape, params), function(b)
+		entry.build(b, params)
+	end, { collision = false })
+	if not ok then
+		-- Out of mesh budget (or a bad build): leave the spot visible as its plain part.
+		return "failed", `'{shape}' not built, spots stay as plain parts: {template}`
+	end
+	if not spot.Parent or spot:GetAttribute("GeoDressed") then
+		return "skipped" -- streamed out, or dressed by another caller, during the first build
+	end
+	local mesh = template:Clone()
+	mesh.Name = spot.Name .. "Mesh"
+	mesh.Size = spot.Size
+	mesh.CFrame = spot.CFrame
+	mesh.Material = spot.Material
+	mesh.Color = if entry.vertexColors then Color3.new(1, 1, 1) else spot.Color
+	mesh.CastShadow = spot.CastShadow
+	mesh.Transparency = spot.Transparency
+	-- Welded, so the mesh follows a spot that moves. It joins the spot's assembly and stays anchored with it.
+	mesh.Massless = true
+	mesh.Anchored = false
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0, weld.Part1 = spot, mesh
+	weld.Parent = mesh
+	mesh.Parent = spot
+	spot.Transparency = 1
+	spot:SetAttribute("GeoDressed", true)
+	return "dressed"
+end
+
+-- On a client the first scan must wait for the place, or it sees a partial tree.
+local function waitForGame()
+	if RunService:IsClient() and not game:IsLoaded() then
+		game.Loaded:Wait()
+	end
+end
+
 -- Client: gives every BasePart under `root` that has a `GeoShape` attribute its generated mesh, sized
--- to the part. The part stays as an invisible collision/hit proxy. Returns how many were dressed.
+-- to the part. The part stays as an invisible collision/hit proxy, and a mesh copies the spot's
+-- Transparency once, when dressed. Yields; returns how many were dressed. One pass over what exists now:
+-- with streaming on, or for maps loaded later, use `Geo.watch`.
 function Geo.dress(root: Instance): number
+	waitForGame()
 	local count, failed = 0, 0
 	local candidates = root:GetDescendants()
 	table.insert(candidates, root)
 	for _, spot in candidates do
-		local shape = spot:GetAttribute("GeoShape")
-		if type(shape) == "string" and spot:IsA("BasePart") and not spot:GetAttribute("GeoDressed") then
-			local entry = shapes[shape]
-			if not entry then
-				warn(`Geo.dress: no shape registered as '{shape}' ({spot:GetFullName()})`)
-				continue
-			end
-			local params: { [string]: any } = spot:GetAttributes()
-			params.GeoShape, params.GeoDressed = nil, nil
-			local ok, template = pcall(Geo.cached, paramKey(shape, params), function(b)
-				entry.build(b, params)
-			end, { collision = false })
-			if not ok then
-				-- Out of mesh budget (or a bad build): leave the spot visible as its plain part.
-				failed += 1
-				if failed == 1 then
-					warn(`Geo.dress: '{shape}' not built, spots stay as plain parts: {template}`)
-				end
-				continue
-			end
-			local mesh = template:Clone()
-			mesh.Name = spot.Name .. "Mesh"
-			mesh.Size = spot.Size
-			mesh.CFrame = spot.CFrame
-			mesh.Material = spot.Material
-			mesh.Color = if entry.vertexColors then Color3.new(1, 1, 1) else spot.Color
-			mesh.CastShadow = spot.CastShadow
-			mesh.Parent = spot
-			spot.Transparency = 1
-			spot:SetAttribute("GeoDressed", true)
+		local result, reason = dressSpot(spot)
+		if result == "dressed" then
 			count += 1
+		elseif result == "failed" then
+			failed += 1
+			if failed == 1 then
+				warn(`Geo.dress: {reason}`)
+			end
 		end
 	end
 	return count
+end
+
+-- Client: dresses `root` now and keeps dressing spots that appear under it later (streamed in, or
+-- loaded with a map), also ones tagged `Geo.SpotTag`. Doesn't yield. Returns a function that stops
+-- watching; dressed spots keep their meshes. A spot that streams out and back is a new instance, so it
+-- is dressed again.
+function Geo.watch(root: Instance): () -> ()
+	local stopped = false
+	local queue: { Instance } = {}
+	local queued: { [Instance]: boolean } = {}
+	local draining = false
+	local warned = false
+	local connections: { RBXScriptConnection } = {}
+
+	local function drain()
+		if draining then
+			return
+		end
+		draining = true
+		task.spawn(function()
+			local index = 1
+			while not stopped and index <= #queue do
+				local spot = queue[index]
+				index += 1
+				queued[spot] = nil
+				local result, reason = dressSpot(spot)
+				if result == "failed" and not warned then
+					warned = true
+					warn(`Geo.watch: {reason}`)
+				end
+				if index % 64 == 0 then
+					task.wait() -- a large map must not stall a frame
+				end
+			end
+			table.clear(queue)
+			draining = false
+		end)
+	end
+
+	local function offer(spot: Instance)
+		if not stopped and not queued[spot] and spot:GetAttribute("GeoShape") ~= nil then
+			queued[spot] = true
+			table.insert(queue, spot)
+			drain()
+		end
+	end
+
+	task.spawn(function()
+		waitForGame()
+		if stopped then
+			return
+		end
+		table.insert(connections, root.DescendantAdded:Connect(offer))
+		table.insert(
+			connections,
+			CollectionService:GetInstanceAddedSignal(Geo.SpotTag):Connect(function(spot: Instance)
+				if spot == root or spot:IsDescendantOf(root) then
+					offer(spot)
+				end
+			end)
+		)
+		offer(root)
+		for _, spot in root:GetDescendants() do
+			offer(spot)
+		end
+		for _, spot in CollectionService:GetTagged(Geo.SpotTag) do
+			if spot:IsDescendantOf(root) then
+				offer(spot)
+			end
+		end
+	end)
+
+	return function()
+		stopped = true
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+	end
 end
 
 return Geo

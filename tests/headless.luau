@@ -5,7 +5,10 @@
 -- Minimal deterministic scheduler and isolated remote fixtures, not Roblox engine emulation.
 -- Module splicing below supplies these locals and uses the mock globals before execution.
 local task = {}
-local function warn(...) end -- warnings are expected in provider-failure fixtures
+local warnings = {}
+local function warn(...) -- warnings are expected in provider-failure fixtures
+	table.insert(warnings, table.concat({ tostring((...)) }, " "))
+end
 local queue = {}
 local workerErrors = {}
 local now = 0
@@ -32,6 +35,47 @@ function task.delay(delay, fn, ...)
 		at = now + delay,
 	})
 end
+local function signal()
+	local listeners = {}
+	local s = {}
+	function s:Connect(fn)
+		local connection = { Connected = true }
+		local entry = { fn = fn, connection = connection }
+		function connection:Disconnect()
+			connection.Connected = false
+			local index = table.find(listeners, entry)
+			if index then
+				table.remove(listeners, index)
+			end
+		end
+		table.insert(listeners, entry)
+		return connection
+	end
+	function s:Once(fn)
+		local connection
+		connection = s:Connect(function(...)
+			connection:Disconnect()
+			fn(...)
+		end)
+		return connection
+	end
+	function s:Wait()
+		local fired = false
+		s:Once(function()
+			fired = true
+		end)
+		while not fired do
+			task.wait()
+		end
+	end
+	function s:Fire(...)
+		for _, entry in table.clone(listeners) do
+			task.spawn(entry.fn, ...)
+		end
+	end
+	return s
+end
+local runtime = { client = false }
 local sequence = 0
 local services = {
 	DataStoreService = {},
@@ -46,10 +90,13 @@ local services = {
 			return true
 		end,
 		IsServer = function()
-			return true
+			return not runtime.client
 		end,
 		IsClient = function()
-			return false
+			return runtime.client
+		end,
+		IsRunning = function()
+			return true
 		end,
 		-- Frame signals for the creative Scheduler; tests drive it with Scheduler.advance.
 		Heartbeat = {
@@ -62,62 +109,306 @@ local services = {
 				return { Disconnect = function() end }
 			end,
 		},
+		BindToRenderStep = function(self, name, _, fn)
+			self.bound = self.bound or {}
+			self.bound[name] = fn
+		end,
+		UnbindFromRenderStep = function(self, name)
+			self.bound[name] = nil
+		end,
 	},
 	Players = {},
 	ServerScriptService = { Kit = { PlayerData = "PlayerData" } },
+	Debris = { AddItem = function() end },
+	LogService = {
+		GetLogHistory = function()
+			return {}
+		end,
+	},
 }
 local game = {
 	JobId = "headless",
+	Loaded = signal(),
+	loaded = true,
 	GetService = function(_, name)
-		return services[name]
+		local service = services[name]
+		if service == nil and name == "Nonexistent" then
+			error("not a service")
+		end
+		return service
+	end,
+	FindFirstChild = function(_, name)
+		local service = services[name]
+		return if type(service) == "table" and service._type == "Instance" then service else nil
+	end,
+	IsLoaded = function(self)
+		return self.loaded
 	end,
 }
 -- Instances are property bags; only the classes below exist, so other classes fail like a broken build.
-local CLASSES = { Folder = true, Part = true, Model = true, WedgePart = true, MeshPart = true }
+local PARTS = { Part = true, WedgePart = true, MeshPart = true }
+local GUI = { Frame = true, TextLabel = true, TextButton = true, ScrollingFrame = true }
+local CLASSES = {
+	Folder = true,
+	Model = true,
+	Humanoid = true,
+	Motor6D = true,
+	WeldConstraint = true,
+	ParticleEmitter = true,
+	PointLight = true,
+	Sound = true,
+	SoundGroup = true,
+	Atmosphere = true,
+	Sky = true,
+	ColorCorrectionEffect = true,
+	BloomEffect = true,
+	SunRaysEffect = true,
+	UICorner = true,
+	UIStroke = true,
+	UIGradient = true,
+	UIPadding = true,
+	UIListLayout = true,
+	UIGridLayout = true,
+	UIScale = true,
+	UISizeConstraint = true,
+	UIAspectRatioConstraint = true,
+	ScreenGui = true,
+}
+for class in PARTS do
+	CLASSES[class] = true
+end
+for class in GUI do
+	CLASSES[class] = true
+end
+-- Created on first use, like the engine's: a bag only pays for the signals a test touches.
+local SIGNALS = {
+	Activated = true,
+	ChildAdded = true,
+	Connected = false,
+	DescendantAdded = true,
+	Destroying = true,
+	Ended = true,
+	Loaded = true,
+	MouseButton1Down = true,
+	MouseButton1Up = true,
+	MouseEnter = true,
+	MouseLeave = true,
+	SelectionGained = true,
+	SelectionLost = true,
+	Touched = true,
+}
 local created = {}
 local Instance
+local instanceMethods = {}
+local instanceMeta = {}
+instanceMeta.__index = function(self, key)
+	if key == "Parent" then
+		return rawget(self, "_parent")
+	elseif key == "Position" then
+		local cf = rawget(self, "CFrame")
+		return cf and cf.Position
+	end
+	local method = instanceMethods[key]
+	if method then
+		return method
+	end
+	if SIGNALS[key] then
+		local s = signal()
+		rawset(self, key, s)
+		return s
+	end
+	return nil
+end
+local function setParent(self, parent)
+	local old = rawget(self, "_parent")
+	if old then
+		local list = rawget(old, "_children")
+		local index = table.find(list, self)
+		if index then
+			table.remove(list, index)
+		end
+	end
+	rawset(self, "_parent", parent)
+	if parent then
+		table.insert(rawget(parent, "_children"), self)
+		parent.ChildAdded:Fire(self)
+		local ancestor = parent
+		while ancestor do
+			ancestor.DescendantAdded:Fire(self)
+			for _, inst in instanceMethods.GetDescendants(self) do
+				ancestor.DescendantAdded:Fire(inst)
+			end
+			ancestor = rawget(ancestor, "_parent")
+		end
+	end
+end
+instanceMeta.__newindex = function(self, key, value)
+	if key == "Parent" then
+		setParent(self, value)
+	elseif key == "Position" then
+		rawset(self, "CFrame", CFrame.new(value))
+	else
+		rawset(self, key, value)
+	end
+end
+function instanceMethods.GetFullName(self)
+	return self.Name
+end
+function instanceMethods.IsA(self, requested)
+	local class = self.ClassName
+	return requested == class
+		or (requested == "BasePart" and PARTS[class] == true)
+		or (requested == "GuiObject" and GUI[class] == true)
+		or (requested == "GuiButton" and class == "TextButton")
+		or (requested == "Light" and class == "PointLight")
+end
+function instanceMethods.IsDescendantOf(self, ancestor)
+	local parent = self.Parent
+	while parent do
+		if parent == ancestor then
+			return true
+		end
+		parent = parent.Parent
+	end
+	return false
+end
+function instanceMethods.GetChildren(self)
+	return table.clone(rawget(self, "_children"))
+end
+function instanceMethods.GetDescendants(self)
+	local out = {}
+	for _, child in rawget(self, "_children") do
+		table.insert(out, child)
+		for _, inst in instanceMethods.GetDescendants(child) do
+			table.insert(out, inst)
+		end
+	end
+	return out
+end
+function instanceMethods.FindFirstChild(self, name, recursive)
+	for _, child in (if recursive then instanceMethods.GetDescendants(self) else rawget(self, "_children")) do
+		if child.Name == name then
+			return child
+		end
+	end
+	return nil
+end
+function instanceMethods.WaitForChild(self, name)
+	return instanceMethods.FindFirstChild(self, name)
+end
+function instanceMethods.FindFirstChildOfClass(self, class)
+	for _, child in rawget(self, "_children") do
+		if child.ClassName == class then
+			return child
+		end
+	end
+	return nil
+end
+function instanceMethods.FindFirstChildWhichIsA(self, class, recursive)
+	for _, child in (if recursive then instanceMethods.GetDescendants(self) else rawget(self, "_children")) do
+		if child:IsA(class) then
+			return child
+		end
+	end
+	return nil
+end
+function instanceMethods.FindFirstAncestorOfClass(self, class)
+	local parent = self.Parent
+	while parent and parent.ClassName ~= class do
+		parent = parent.Parent
+	end
+	return parent
+end
+function instanceMethods.GetAttribute(self, name)
+	return rawget(self, "_attributes")[name]
+end
+function instanceMethods.GetAttributes(self)
+	return table.clone(rawget(self, "_attributes"))
+end
+function instanceMethods.SetAttribute(self, name, value)
+	rawget(self, "_attributes")[name] = value
+	local changed = rawget(self, "_attributeSignals")[name]
+	if changed then
+		changed:Fire()
+	end
+end
+function instanceMethods.GetAttributeChangedSignal(self, name)
+	local signals = rawget(self, "_attributeSignals")
+	signals[name] = signals[name] or signal()
+	return signals[name]
+end
+function instanceMethods.GetPropertyChangedSignal()
+	return signal()
+end
+function instanceMethods.PivotTo(self, cf)
+	rawset(self, "CFrame", cf)
+end
+function instanceMethods.GetPivot(self)
+	return rawget(self, "CFrame") or CFrame.identity
+end
+function instanceMethods.ClearAllChildren(self)
+	for _, child in self:GetChildren() do
+		child:Destroy()
+	end
+end
+function instanceMethods.Clear() end
+function instanceMethods.Emit() end
+function instanceMethods.Play(self)
+	rawset(self, "Playing", true)
+end
+function instanceMethods.Clone(self)
+	local copy = table.clone(self)
+	rawset(copy, "_parent", nil)
+	rawset(copy, "destroyed", nil)
+	rawset(copy, "_children", {})
+	rawset(copy, "_attributes", table.clone(rawget(self, "_attributes")))
+	rawset(copy, "_attributeSignals", {})
+	for key in SIGNALS do
+		rawset(copy, key, nil)
+	end
+	table.insert(created, copy)
+	for _, child in rawget(self, "_children") do
+		child:Clone().Parent = copy
+	end
+	return copy
+end
+function instanceMethods.Destroy(self)
+	if self.destroyed then
+		return
+	end
+	self.destroyed = true
+	self.Destroying:Fire()
+	for _, child in self:GetChildren() do
+		child:Destroy()
+	end
+	self.Parent = nil
+end
 Instance = {
 	new = function(className)
 		if className == "BindableEvent" then
-			return { Event = {} }
+			local event = signal()
+			return {
+				Event = event,
+				Fire = function(_, ...)
+					event:Fire(...)
+				end,
+				Destroy = function() end,
+			}
 		end
 		assert(CLASSES[className], "headless runner does not implement " .. className)
-		local inst = {
+		local inst = setmetatable({
 			_type = "Instance",
 			ClassName = className,
-			GetFullName = function()
-				return className
-			end,
-			IsA = function(_, requested)
-				return requested == className
-					or (requested == "BasePart" and className ~= "Folder" and className ~= "Model")
-			end,
-			IsDescendantOf = function(self, ancestor)
-				local parent = self.Parent
-				while parent do
-					if parent == ancestor then
-						return true
-					end
-					parent = parent.Parent
-				end
-				return false
-			end,
-			Clone = function(self)
-				local copy = table.clone(self)
-				copy.Parent, copy.destroyed = nil, nil
-				table.insert(created, copy)
-				return copy
-			end,
-			Destroy = function(self)
-				self.Parent = nil
-				self.destroyed = true
-			end,
-		}
+			Name = className,
+			_children = {},
+			_attributes = {},
+			_attributeSignals = {},
+		}, instanceMeta)
 		table.insert(created, inst)
 		return inst
 	end,
 }
--- Values: translation-only CFrames and componentwise vectors, enough for layout maths, not rotation.
+-- Values: real rigid CFrames and componentwise vectors, enough for layout maths.
 local Vector3 = {}
 local vectorMeta = {}
 function Vector3.new(x, y, z)
@@ -130,7 +421,7 @@ end
 local function lift(v)
 	return if type(v) == "number" then Vector3.new(v, v, v) else v
 end
-vectorMeta.__index = {
+local vectorMethods = {
 	Min = function(a, b)
 		return Vector3.new(math.min(a.X, b.X), math.min(a.Y, b.Y), math.min(a.Z, b.Z))
 	end,
@@ -140,7 +431,22 @@ vectorMeta.__index = {
 	Lerp = function(a, b, t)
 		return a + (b - a) * t
 	end,
+	Dot = function(a, b)
+		return a.X * b.X + a.Y * b.Y + a.Z * b.Z
+	end,
+	Cross = function(a, b)
+		return Vector3.new(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X)
+	end,
 }
+vectorMeta.__index = function(self, key)
+	if key == "Unit" then
+		return self / self.Magnitude
+	end
+	return vectorMethods[key]
+end
+vectorMeta.__eq = function(a, b)
+	return a.X == b.X and a.Y == b.Y and a.Z == b.Z
+end
 vectorMeta.__add = function(a, b)
 	return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z)
 end
@@ -160,51 +466,196 @@ vectorMeta.__unm = function(a)
 end
 Vector3.zero, Vector3.one = Vector3.new(0, 0, 0), Vector3.new(1, 1, 1)
 Vector3.xAxis, Vector3.yAxis, Vector3.zAxis = Vector3.new(1, 0, 0), Vector3.new(0, 1, 0), Vector3.new(0, 0, 1)
-local Vector2 = {
-	new = function(x, y)
-		return { _type = "Vector2", X = x or 0, Y = y or 0 }
+local Vector2 = {}
+local vector2Meta = {}
+function Vector2.new(x, y)
+	x, y = x or 0, y or 0
+	return setmetatable({ _type = "Vector2", X = x, Y = y, Magnitude = math.sqrt(x * x + y * y) }, vector2Meta)
+end
+vector2Meta.__add = function(a, b)
+	return Vector2.new(a.X + b.X, a.Y + b.Y)
+end
+vector2Meta.__sub = function(a, b)
+	return Vector2.new(a.X - b.X, a.Y - b.Y)
+end
+vector2Meta.__mul = function(a, b)
+	return if type(a) == "number" then Vector2.new(a * b.X, a * b.Y) else Vector2.new(a.X * b, a.Y * b)
+end
+vector2Meta.__div = function(a, b)
+	return Vector2.new(a.X / b, a.Y / b)
+end
+vector2Meta.__eq = function(a, b)
+	return a.X == b.X and a.Y == b.Y
+end
+Vector2.zero, Vector2.one = Vector2.new(0, 0), Vector2.new(1, 1)
+local UDim = {
+	new = function(scale, offset)
+		return { _type = "UDim", Scale = scale or 0, Offset = offset or 0 }
+	end,
+}
+local UDim2 = {}
+function UDim2.new(xs, xo, ys, yo)
+	if type(xs) == "table" then
+		return { _type = "UDim2", X = xs, Y = xo }
+	end
+	return { _type = "UDim2", X = UDim.new(xs, xo), Y = UDim.new(ys, yo) }
+end
+function UDim2.fromScale(x, y)
+	return UDim2.new(x, 0, y, 0)
+end
+function UDim2.fromOffset(x, y)
+	return UDim2.new(0, x, 0, y)
+end
+local NumberRange = {
+	new = function(min, max)
+		return { _type = "NumberRange", Min = min, Max = max or min }
+	end,
+}
+local function sequenceType(kind)
+	return {
+		new = function(...)
+			return { _type = kind, Value = { ... } }
+		end,
+	}
+end
+local NumberSequence, ColorSequence = sequenceType("NumberSequence"), sequenceType("ColorSequence")
+local NumberSequenceKeypoint, ColorSequenceKeypoint =
+	sequenceType("NumberSequenceKeypoint"), sequenceType("ColorSequenceKeypoint")
+local TweenInfo = {
+	new = function(time)
+		return { Time = time }
 	end,
 }
 local CFrame = {}
 local frameMeta = {}
-function CFrame.new(position)
-	local cf = setmetatable({ _type = "CFrame", Position = position or Vector3.zero }, frameMeta)
-	cf.Rotation = cf
-	return cf
+local IDENTITY = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }
+local function frame(position, r)
+	return setmetatable({ _type = "CFrame", Position = position, r = r }, frameMeta)
 end
-frameMeta.__index = {
-	Lerp = function(a, b, t)
-		return CFrame.new(a.Position:Lerp(b.Position, t))
-	end,
-}
+local function rotate(r, v)
+	return Vector3.new(
+		r[1] * v.X + r[2] * v.Y + r[3] * v.Z,
+		r[4] * v.X + r[5] * v.Y + r[6] * v.Z,
+		r[7] * v.X + r[8] * v.Y + r[9] * v.Z
+	)
+end
+local function multiply(a, b)
+	return {
+		a[1] * b[1] + a[2] * b[4] + a[3] * b[7],
+		a[1] * b[2] + a[2] * b[5] + a[3] * b[8],
+		a[1] * b[3] + a[2] * b[6] + a[3] * b[9],
+		a[4] * b[1] + a[5] * b[4] + a[6] * b[7],
+		a[4] * b[2] + a[5] * b[5] + a[6] * b[8],
+		a[4] * b[3] + a[5] * b[6] + a[6] * b[9],
+		a[7] * b[1] + a[8] * b[4] + a[9] * b[7],
+		a[7] * b[2] + a[8] * b[5] + a[9] * b[8],
+		a[7] * b[3] + a[8] * b[6] + a[9] * b[9],
+	}
+end
+local frameMethods = {}
+function frameMethods.Inverse(self)
+	local r = self.r
+	local t = { r[1], r[4], r[7], r[2], r[5], r[8], r[3], r[6], r[9] }
+	return frame(-rotate(t, self.Position), t)
+end
+function frameMethods.ToObjectSpace(self, other)
+	return self:Inverse() * other
+end
+function frameMethods.Lerp(a, b, t)
+	-- Component lerp, re-orthogonalised; enough for short test arcs.
+	local r = {}
+	for i = 1, 9 do
+		r[i] = a.r[i] + (b.r[i] - a.r[i]) * t
+	end
+	local x = Vector3.new(r[1], r[4], r[7]).Unit
+	local y = Vector3.new(r[2], r[5], r[8])
+	local z = x:Cross(y).Unit
+	y = z:Cross(x)
+	return frame(a.Position:Lerp(b.Position, t), { x.X, y.X, z.X, x.Y, y.Y, z.Y, x.Z, y.Z, z.Z })
+end
+frameMeta.__index = function(self, key)
+	local r = rawget(self, "r")
+	if key == "Rotation" then
+		return frame(Vector3.zero, r)
+	elseif key == "LookVector" then
+		return Vector3.new(-r[3], -r[6], -r[9])
+	elseif key == "UpVector" then
+		return Vector3.new(r[2], r[5], r[8])
+	elseif key == "RightVector" then
+		return Vector3.new(r[1], r[4], r[7])
+	end
+	return frameMethods[key]
+end
 frameMeta.__mul = function(a, b)
 	if b._type == "Vector3" then
-		return a.Position + b
+		return a.Position + rotate(a.r, b)
 	end
-	return CFrame.new(a.Position + b.Position)
+	return frame(a.Position + rotate(a.r, b.Position), multiply(a.r, b.r))
+end
+function CFrame.fromMatrix(position, x, y, z)
+	z = z or x:Cross(y)
+	return frame(position, { x.X, y.X, z.X, x.Y, y.Y, z.Y, x.Z, y.Z, z.Z })
+end
+function CFrame.lookAt(position, target, up)
+	local look = (target - position).Unit
+	local right = look:Cross(up or Vector3.yAxis).Unit
+	return CFrame.fromMatrix(position, right, right:Cross(look), -look)
+end
+function CFrame.new(x, y, z)
+	if type(x) == "number" then
+		return frame(Vector3.new(x, y, z), IDENTITY)
+	elseif y then
+		return CFrame.lookAt(x, y)
+	end
+	return frame(x or Vector3.zero, IDENTITY)
 end
 CFrame.identity = CFrame.new()
-function CFrame.Angles()
-	return CFrame.identity
+function CFrame.Angles(rx, ry, rz)
+	local cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+	local x, y, z =
+		{ 1, 0, 0, 0, cx, -sx, 0, sx, cx }, { cy, 0, sy, 0, 1, 0, -sy, 0, cy }, { cz, -sz, 0, sz, cz, 0, 0, 0, 1 }
+	return frame(Vector3.zero, multiply(multiply(x, y), z))
 end
-function CFrame.fromAxisAngle()
-	return CFrame.identity
+function CFrame.fromAxisAngle(axis, angle)
+	local u, c, s = axis.Unit, math.cos(angle), math.sin(angle)
+	local i = 1 - c
+	return frame(Vector3.zero, {
+		c + u.X * u.X * i,
+		u.X * u.Y * i - u.Z * s,
+		u.X * u.Z * i + u.Y * s,
+		u.Y * u.X * i + u.Z * s,
+		c + u.Y * u.Y * i,
+		u.Y * u.Z * i - u.X * s,
+		u.Z * u.X * i - u.Y * s,
+		u.Z * u.Y * i + u.X * s,
+		c + u.Z * u.Z * i,
+	})
 end
 local colorMeta = {}
 local Color3 = {}
 function Color3.new(r, g, b)
-	return setmetatable({ _type = "Color3", R = r, G = g, B = b }, colorMeta)
+	return setmetatable({ _type = "Color3", R = r or 0, G = g or 0, B = b or 0 }, colorMeta)
 end
 function Color3.fromRGB(r, g, b)
 	return Color3.new(r / 255, g / 255, b / 255)
+end
+function Color3.fromHex(hex)
+	hex = hex:gsub("#", "")
+	return Color3.fromRGB(tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16))
 end
 colorMeta.__index = {
 	Lerp = function(a, b, t)
 		return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
 	end,
+	ToHex = function(c)
+		return string.format("%02x%02x%02x", c.R * 255 + 0.5, c.G * 255 + 0.5, c.B * 255 + 0.5)
+	end,
 }
+colorMeta.__eq = function(a, b)
+	return a.R == b.R and a.G == b.G and a.B == b.B
+end
 -- Enum.X.Y is the string "X.Y".
-local Enum = setmetatable({}, {
+local Enum = setmetatable({ RenderPriority = { Camera = { Value = 200 } } }, {
 	__index = function(_, kind)
 		return setmetatable({}, {
 			__index = function(_, item)
@@ -219,11 +670,12 @@ local Content = {
 	end,
 }
 -- EditableMesh stand-ins: async calls yield like the engine; `denied` mimics a game without
--- "Allow Mesh & Image APIs".
-local assets = { denied = false, builds = 0 }
+-- "Allow Mesh & Image APIs", `failBake`/`failPart` an async call that errors.
+local assets = { denied = false, failBake = false, failPart = false, builds = 0, destroyed = 0, live = 0 }
 local function editableMesh()
 	local positions, faces = {}, {}
 	local mesh = {}
+	assets.live += 1
 	function mesh:AddVertex(p)
 		table.insert(positions, p)
 		return #positions
@@ -259,7 +711,10 @@ local function editableMesh()
 		return 1
 	end
 	function mesh:SetFaceColors() end
-	function mesh:Destroy() end
+	function mesh:Destroy()
+		assets.destroyed += 1
+		assets.live -= 1
+	end
 	return mesh
 end
 function assets:CreateEditableMesh()
@@ -270,10 +725,16 @@ function assets:CreateEditableMesh()
 end
 function assets:CreateEditableMeshAsync()
 	task.wait(0.05)
+	if self.failBake then
+		error("bake failed")
+	end
 	return editableMesh()
 end
 function assets:CreateMeshPartAsync()
 	task.wait(0.05)
+	if self.failPart then
+		error("mesh part failed")
+	end
 	self.builds += 1
 	return Instance.new("MeshPart")
 end
@@ -282,19 +743,75 @@ local function typeof(value)
 	return type(value) == "table" and value._type or type(value)
 end
 local workspace = Instance.new("Folder")
+workspace.Name = "Workspace"
+services.Workspace = workspace
+services.Lighting = Instance.new("Folder")
+services.SoundService = Instance.new("Folder")
+services.GuiService = {
+	GetGuiInset = function()
+		return Vector2.new(0, 36), Vector2.zero
+	end,
+	GetPropertyChangedSignal = function()
+		return signal()
+	end,
+}
+services.UserInputService = {
+	GamepadEnabled = false,
+	GetLastInputType = function()
+		return Enum.UserInputType.MouseMovement
+	end,
+}
+-- Starting a tween cancels the one running on that instance, like the engine does per property.
+local runningTweens = {}
+services.TweenService = {
+	Create = function(_, inst, info, props)
+		local tween = { Completed = signal() }
+		local state = "idle"
+		function tween:Play()
+			local running = runningTweens[inst]
+			if running and running ~= tween then
+				running:Cancel()
+			end
+			runningTweens[inst] = tween
+			state = "playing"
+			task.delay(info.Time, function()
+				if state == "playing" then
+					state = "done"
+					for key, value in props do
+						inst[key] = value
+					end
+					tween.Completed:Fire(Enum.PlaybackState.Completed)
+				end
+			end)
+		end
+		function tween:Cancel()
+			if state == "playing" then
+				state = "cancelled"
+				tween.Completed:Fire(Enum.PlaybackState.Cancelled)
+			end
+		end
+		return tween
+	end,
+}
+local tagged = {}
+local tagSignals = {}
+services.CollectionService = {
+	GetTagged = function(_, tag)
+		return table.clone(tagged[tag] or {})
+	end,
+	GetInstanceAddedSignal = function(_, tag)
+		tagSignals[tag] = tagSignals[tag] or signal()
+		return tagSignals[tag]
+	end,
+	AddTag = function(self, inst, tag)
+		tagged[tag] = tagged[tag] or {}
+		table.insert(tagged[tag], inst)
+		self:GetInstanceAddedSignal(tag):Fire(inst)
+	end,
+}
 
 local function event()
-	local listeners = {}
-	return {
-		Connect = function(_, fn)
-			table.insert(listeners, fn)
-		end,
-		Fire = function(_, ...)
-			for _, fn in listeners do
-				task.spawn(fn, ...)
-			end
-		end,
-	}
+	return signal()
 end
 local function environment()
 	services.Players = {
@@ -336,7 +853,17 @@ local passed, failed = 0, 0
 local t = {}
 t.loadNet = loadNet
 -- Engine stand-ins for creative specs that only run headless.
-t.fixtures = { instances = created, assets = assets }
+t.fixtures = {
+	instances = created,
+	assets = assets,
+	services = services,
+	game = game,
+	runtime = runtime,
+	warnings = warnings,
+	frame = function(seconds)
+		task.wait(seconds)
+	end,
+}
 function t.eq(actual, expected, msg)
 	assert(actual == expected, (msg or "") .. " expected " .. tostring(expected) .. ", got " .. tostring(actual))
 end

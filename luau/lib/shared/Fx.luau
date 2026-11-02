@@ -64,7 +64,7 @@ export type Layer = {
 	rotation: { number }?,
 	rotSpeed: { number }?,
 	zOffset: number?,
-	shape: string?,
+	shape: string?, -- mesh: ball, block, cylinder, ring, torus, shard, wedge. Particles: Box, Sphere, Cylinder, Disc
 	shapeSize: (number | Vector3)?,
 	direction: Vector3?,
 	orientation: string?,
@@ -127,12 +127,17 @@ Fx.Palette = {
 	spark = Color3.fromRGB(255, 236, 170),
 } :: { [string]: Color3 }
 
+-- Default debris chunk lifetime { min, max }, and how long a chunk outlives it before Debris removes it.
+local DEBRIS_LIFETIME = { 1.6, 2.4 }
+local DEBRIS_LINGER = 0.1
 local QUALITY_RANK: { [string]: number } = { Low = 1, Medium = 2, High = 3 }
 local QUALITY_COUNT: { [string]: number } = { Low = 0.35, Medium = 0.65, High = 1 }
 local MAX_EMIT = 400
 local MAX_SECONDS = 20
--- Real seconds after which any effect is stopped, whatever its time scale or freezes (leak guard).
+-- Real seconds an effect may run before it is stopped, whatever its time scale (leak guard). Time spent
+-- frozen doesn't count, so a capture can hold a frozen effect as long as it needs.
 local WATCHDOG_SECONDS = MAX_SECONDS * 3
+local WATCHDOG_TICK = 5
 local POOL_SIZE = 4
 
 local defaultQuality: Quality? = nil
@@ -226,7 +231,8 @@ function Fx.layerEnd(layer: Layer): number
 		local last = if keys and #keys > 0 then keys[#keys][1] else 0
 		return at + math.max(layer.duration or 0, last)
 	elseif layer.kind == "debris" then
-		return at + (if layer.lifetime then layer.lifetime[2] or layer.lifetime[1] else 2)
+		local life = layer.lifetime or DEBRIS_LIFETIME
+		return at + (life[2] or life[1]) + DEBRIS_LINGER
 	elseif layer.kind == "camera" then
 		return at + (if layer.shake then layer.shake[1] else 0)
 	end
@@ -459,6 +465,24 @@ local function step(self: Internal, dt: number): boolean
 	return false
 end
 
+local function isFrozen(self: Internal): boolean
+	return self._freezes > 0 or self._scale == 0 or Scheduler.getTimeScale() == 0
+end
+
+local function watch(self: Internal, awake: number)
+	task.delay(WATCHDOG_TICK, function()
+		if self.finished then
+			return
+		end
+		local total = if isFrozen(self) then awake else awake + WATCHDOG_TICK
+		if total >= WATCHDOG_SECONDS then
+			Handle.stop(self)
+		else
+			watch(self, total)
+		end
+	end)
+end
+
 local function newHandle(
 	root: Model,
 	anchor: BasePart,
@@ -487,7 +511,7 @@ local function newHandle(
 		_attached = {},
 	}, Handle) :: any
 	handles[self] = true
-	task.delay(WATCHDOG_SECONDS, Handle.stop, self)
+	watch(self, 0)
 	return self
 end
 
@@ -899,7 +923,7 @@ local function buildDebris(ctx: Ctx, layer: Layer)
 	local count = Fx.countFor(layer.count or 8, ctx.quality, 1)
 	local sizes = layer.sizeRange or { 0.4, 1.2 }
 	local speed = layer.speed or { 20, 45 }
-	local life = layer.lifetime or { 1.6, 2.4 }
+	local life = layer.lifetime or DEBRIS_LIFETIME
 	at(ctx.handle, layer.at or 0, function()
 		local origin = worldPosition(ctx, layer)
 		local rng = Random.new()
@@ -926,7 +950,7 @@ local function buildDebris(ctx: Ctx, layer: Layer)
 				{ Size = chunk.Size * 0.1, Transparency = 1 },
 				{ time = 0.5, delay = lifetime - 0.5, ease = "quadIn" }
 			)
-			Debris:AddItem(chunk, lifetime + 0.1)
+			Debris:AddItem(chunk, lifetime + DEBRIS_LINGER)
 		end
 	end)
 	ctx.handle._ending = math.max(ctx.handle._ending, Fx.layerEnd(layer))
@@ -948,10 +972,13 @@ local live = 0
 -- Global time scale for every playing effect and the shared scheduler (0 freezes a frame for review).
 function Fx.setGlobalTimeScale(scale: number)
 	Scheduler.setTimeScale(scale)
+end
+
+Scheduler.onTimeScale(function()
 	for handle in handles do
 		applyScale(handle, handle._scale)
 	end
-end
+end)
 
 -- Live effect count (for leak tests and budgets).
 function Fx.live(): number
@@ -1088,10 +1115,14 @@ local function emitCollect(self: Internal, root: Instance, quality: Quality, pla
 			if count == nil and duration == nil then
 				continue
 			end
+			-- Pooled copies reuse emitters whose TimeScale a freeze or slow-mo changed: keep the authored one.
+			local storedScale = inst:GetAttribute("FxTimeScale")
+			local authored = if type(storedScale) == "number" then storedScale else inst.TimeScale
+			inst:SetAttribute("FxTimeScale", authored)
 			table.insert(self._emitters, inst)
-			self._authoredScale[inst] = inst.TimeScale
+			self._authoredScale[inst] = authored
 			inst.Enabled = false
-			local lifetime = inst.Lifetime.Max / math.max(inst.TimeScale, 0.05)
+			local lifetime = inst.Lifetime.Max / math.max(authored, 0.05)
 			if count then
 				local n = Fx.countFor(count, quality, 1)
 				at(self, delay, function()

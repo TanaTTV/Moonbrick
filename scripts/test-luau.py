@@ -16,19 +16,24 @@ def bundle():
     net = (ROOT / "luau/lib/shared/Net.luau").read_text(encoding="utf-8")
     net_suite = (ROOT / "luau/tests/Net.spec.luau").read_text(encoding="utf-8")
     code += "loadNet = function(game, Instance, os, warn)\n" + net + "\nend\n"
-    code += "services.ReplicatedStorage = { Kit = { Net = 'Net' } }\n"
+    code += "services.ReplicatedStorage = Instance.new('Folder')\nservices.ReplicatedStorage.Kit = { Net = 'Net' }\n"
     code += "modules.Net = loadNet(game, Instance, os, warn)\n"
     for name in ("Cooldown", "Round", "Economy"):
         source = (ROOT / f"luau/lib/server/{name}.luau").read_text(encoding="utf-8")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ServerScriptService.Kit.{name} = '{name}'\n"
     gameplay = (ROOT / "luau/tests/Gameplay.spec.luau").read_text(encoding="utf-8")
     code += creative_modules()
-    creative_spec = (ROOT / "luau/tests/Creative.spec.luau").read_text(encoding="utf-8")
-    code += "suites = {(function()\n" + suite + "\nend)(), (function()\n" + gameplay + "\nend)(), (function()\n" + net_suite + "\nend)(), (function()\n" + creative_spec + "\nend)(), (function()\n" + tex_parity_spec() + "\nend)()}\n"
+    code += mcpkit_module()
+    specs = [suite, gameplay, net_suite]
+    specs += [(ROOT / f"luau/tests/{name}.spec.luau").read_text(encoding="utf-8") for name in HEADLESS_SPECS]
+    specs.append(tex_parity_spec())
+    code += "suites = {" + ", ".join(f"(function()\n{spec}\nend)()" for spec in specs) + "}\n"
     return (ROOT / "tests/headless.luau").read_text(encoding="utf-8").replace("-- MODULES --", code)
 
 
-CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Fx")
+CREATIVE = ("Scheduler", "Motion", "Audio", "Tex", "Pose", "Geo", "Fx", "VFX", "UI")
+# Specs with pure logic or that use the headless stand-ins; the rest need Studio.
+HEADLESS_SPECS = ("Creative", "Capture")
 
 
 def creative_modules() -> str:
@@ -40,6 +45,12 @@ def creative_modules() -> str:
             source = source.replace(f"require(script.Parent.{other})", f"modules.{other}")
         code += f"modules.{name} = (function()\n{source}\nend)()\nservices.ReplicatedStorage.Kit.{name} = '{name}'\n"
     return code
+
+
+def mcpkit_module() -> str:
+    source = (ROOT / "luau/MCPKit.luau").read_text(encoding="utf-8").replace("_G.K = K", "-- no global cache headless")
+    code = "services.ServerStorage = Instance.new('Folder')\nservices.ServerStorage.Name = 'ServerStorage'\nservices.ServerStorage.MCPKit = 'MCPKit'\n"
+    return code + f"modules.MCPKit = (function()\n{source}\nend)()\n"
 
 
 def tex_parity_spec() -> str:

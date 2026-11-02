@@ -54,6 +54,12 @@ function Tex.usePreview(base: string?)
 	previewBase = base or "rbxasset://textures/moonbrick/"
 end
 
+-- Forgets `useFiles` and `usePreview`: back to stock textures. (Tests and scene changes.)
+function Tex.resetFiles()
+	table.clear(files)
+	previewBase = nil
+end
+
 -- The file texture for a particle/beam/trail and whether it is a flipbook sheet (pure).
 function Tex.fileFor(name: string): (string, number?)
 	local uploaded = files[name]

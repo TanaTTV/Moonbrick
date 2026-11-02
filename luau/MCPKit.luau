@@ -19,15 +19,37 @@ function K.get(p: any)
 	if typeof(p) == "Instance" then
 		return p
 	end
-	local i = game
+	local segs = {}
 	for seg in string.gmatch((p:gsub("^game%.", "")), "[^%.]+") do
-		local n = i:FindFirstChild(seg) or (i == game and game:GetService(seg))
-		if not n then
-			error("not found: " .. p .. " (at " .. seg .. ")", 2)
-		end
-		i = n
+		table.insert(segs, seg)
 	end
-	return i
+	-- Names can hold dots ("Creative.spec"): at each level try one segment, then joined ones, and back
+	-- out of dead ends, so everything K.path prints resolves.
+	local deepest = 1
+	local function walk(i: any, first: any)
+		if first > #segs then
+			return i
+		end
+		deepest = math.max(deepest, first)
+		for last = first, #segs do
+			local name = table.concat(segs, ".", first, last)
+			local n = i:FindFirstChild(name)
+			if not n and i == game then
+				local ok, service = pcall(game.GetService, game, name)
+				n = ok and service or nil
+			end
+			local found = n and walk(n, last + 1)
+			if found then
+				return found
+			end
+		end
+		return nil
+	end
+	local found = walk(game, 1)
+	if not found then
+		error("not found: " .. p .. " (at " .. tostring(segs[deepest]) .. ")", 2)
+	end
+	return found
 end
 
 local function fmt(v: any)
@@ -641,6 +663,33 @@ function K.perf(top: any)
 	)
 end
 
+local DEPRECATED = {
+	{ "%f[%w_.]wait%(", "wait() -> task.wait()" },
+	{ "%f[%w_.]spawn%(", "spawn() -> task.spawn()" },
+	{ "%f[%w_.]delay%(", "delay() -> task.delay()" },
+	{ ":connect%(", ":connect -> :Connect" },
+	{ "Instance%.new%([^,%)]+,", "Instance.new(class, parent) -> set Parent last" },
+	-- Only the Humanoid method is deprecated; "animator:LoadAnimation(" and "(x :: Animator):LoadAnimation(" are right.
+	{
+		":LoadAnimation%(",
+		"Humanoid:LoadAnimation -> Animator:LoadAnimation",
+		"[Aa]nimator[%w_%s%):]*:LoadAnimation%(",
+	},
+	{ "%f[%w_]loadstring%(", "loadstring is disabled in live games" },
+	{ '"ClickDetector"', "ClickDetector: no console/gamepad support; prefer ProximityPrompt" },
+}
+
+-- Audit findings for one line of source.
+function K.lintLine(line: any)
+	local found = {}
+	for _, rule in ipairs(DEPRECATED) do
+		if line:find(rule[1]) and not (rule[3] and line:find(rule[3])) then
+			table.insert(found, rule[2])
+		end
+	end
+	return found
+end
+
 -- Pre-publish audit: deprecated APIs, input that doesn't work on every platform, risky remotes, leftovers.
 function K.audit()
 	if game:GetService("RunService"):IsRunning() then
@@ -655,16 +704,6 @@ function K.audit()
 			table.insert(issues, s)
 		end
 	end
-	local deprecated = {
-		{ "%f[%w_.]wait%(", "wait() -> task.wait()" },
-		{ "%f[%w_.]spawn%(", "spawn() -> task.spawn()" },
-		{ "%f[%w_.]delay%(", "delay() -> task.delay()" },
-		{ ":connect%(", ":connect -> :Connect" },
-		{ "Instance%.new%([^,%)]+,", "Instance.new(class, parent) -> set Parent last" },
-		{ "LoadAnimation", "Humanoid:LoadAnimation -> Animator:LoadAnimation" },
-		{ "%f[%w_]loadstring%(", "loadstring is disabled in live games" },
-		{ '"ClickDetector"', "ClickDetector: no console/gamepad support; prefer ProximityPrompt" },
-	}
 	for _, d in ipairs(game:GetDescendants()) do
 		if d:IsA("LuaSourceContainer") and d.Name ~= "MCPKit" and SESok then
 			if d:IsA("BaseScript") and d.Disabled then
@@ -676,10 +715,8 @@ function K.audit()
 				for line in (src .. "\n"):gmatch("(.-)\n") do
 					n += 1
 					if not line:match("^%s*%-%-") then
-						for _, rule in ipairs(deprecated) do
-							if line:find(rule[1]) then
-								add(K.path(d) .. ":" .. n .. " " .. rule[2])
-							end
+						for _, issue in ipairs(K.lintLine(line)) do
+							add(K.path(d) .. ":" .. n .. " " .. issue)
 						end
 						if line:find("OnServerEvent") and not src:find("typeof%(") and not src:find("Net%.") then
 							add(

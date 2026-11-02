@@ -312,15 +312,22 @@ function VFX.flash(opts: Options?)
 	Debris:AddItem(f, time + 0.1)
 end
 
--- Kick the field of view out by `amount` degrees and ease it back.
+local fovPunches = 0
+
+-- Kick the field of view out by `amount` degrees and ease it back. Overlapping punches share the base
+-- from before the first; only the newest one's end clears it.
 function VFX.fovPunch(amount: number, time: number?)
 	clientOnly("fovPunch")
 	local camera = workspace.CurrentCamera
 	local base = camera:GetAttribute("VFXBaseFov") :: number? or camera.FieldOfView
 	camera:SetAttribute("VFXBaseFov", base)
 	camera.FieldOfView = base + amount
+	fovPunches += 1
+	local punch = fovPunches
 	tween(camera, time or 0.9, { FieldOfView = base }, Enum.EasingStyle.Quint).Completed:Once(function()
-		camera:SetAttribute("VFXBaseFov", nil)
+		if punch == fovPunches then
+			camera:SetAttribute("VFXBaseFov", nil)
+		end
 	end)
 end
 

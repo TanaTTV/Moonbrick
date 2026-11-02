@@ -9,7 +9,6 @@
 --
 -- Use your own uploads, Roblox's built-in sounds (`Audio.Builtin`) or Creator Store audio you are
 -- allowed to use. Nothing here uploads or publishes audio.
-local Debris = game:GetService("Debris")
 local SoundService = game:GetService("SoundService")
 
 local Audio = {}
@@ -44,6 +43,9 @@ Audio.Builtin = {
 local cues: { [string]: Cue } = {}
 local groups: { [string]: SoundGroup } = {}
 local DEFAULT_VOLUME: { [string]: number } = { Master = 1, Music = 0.5, SFX = 0.8, UI = 0.6, Ambience = 0.45 }
+-- Seconds an asset gets to load before a one-shot gives up, and the length assumed when it reports none.
+local LOAD_TIMEOUT = 10
+local UNKNOWN_LENGTH = 6
 
 -- The SoundGroup for `name` under SoundService (created once; all groups route into Master).
 function Audio.group(name: Group): SoundGroup
@@ -51,7 +53,8 @@ function Audio.group(name: Group): SoundGroup
 	if existing and existing.Parent then
 		return existing
 	end
-	local found = SoundService:FindFirstChild("Moonbrick" .. name)
+	-- Recursive: non-Master groups live under Master, and a client must find the server's copy.
+	local found = SoundService:FindFirstChild("Moonbrick" .. name, true)
 	local group: SoundGroup
 	if found and found:IsA("SoundGroup") then
 		group = found
@@ -143,7 +146,15 @@ local function build(nameOrId: string, where: Where?, opts: PlayOptions?): (Soun
 	return sound, holder
 end
 
--- Plays a cue (or a raw sound id) once. Returns the Sound, which cleans itself up.
+-- Seconds to keep a loaded one-shot before cleanup, when `Ended` never fires (pure; tested). Before
+-- it loads a Sound reports TimeLength 0, so only call this once it has loaded.
+function Audio.lifetime(length: number, speed: number, delay: number?): number
+	local seconds = if length > 0 then length else UNKNOWN_LENGTH
+	return (delay or 0) + seconds / math.max(speed, 0.1) + 1
+end
+
+-- Plays a cue (or a raw sound id) once. Returns the Sound, which cleans itself up when it ends. A cue
+-- with `looped = true` never ends: it plays until you destroy the Sound (prefer `Audio.loop`).
 function Audio.play(nameOrId: string, where: Where?, opts: PlayOptions?): Sound
 	local sound, holder = build(nameOrId, where, opts)
 	local delay = opts and opts.delay or 0
@@ -157,17 +168,36 @@ function Audio.play(nameOrId: string, where: Where?, opts: PlayOptions?): Sound
 	else
 		start()
 	end
-	-- Generous upper bound for cleanup when Ended never fires (an unloaded asset).
-	local lifetime = delay + math.max(sound.TimeLength, 6) / math.max(sound.PlaybackSpeed, 0.1) + 1
-	sound.Ended:Once(function()
+	local cleaned = false
+	local function cleanup()
+		if cleaned then
+			return
+		end
+		cleaned = true
 		sound:Destroy()
 		if holder then
 			holder:Destroy()
 		end
-	end)
-	Debris:AddItem(sound, lifetime)
-	if holder then
-		Debris:AddItem(holder, lifetime)
+	end
+	sound.Destroying:Once(cleanup)
+	if sound.Looped then
+		return sound
+	end
+	sound.Ended:Once(cleanup)
+	-- Upper bound for when Ended never fires. The length is only known after loading, and an asset
+	-- that never loads is dropped after LOAD_TIMEOUT.
+	local function armCleanup()
+		task.delay(Audio.lifetime(sound.TimeLength, sound.PlaybackSpeed, delay), cleanup)
+	end
+	if sound.IsLoaded then
+		armCleanup()
+	else
+		sound.Loaded:Once(armCleanup)
+		task.delay(delay + LOAD_TIMEOUT, function()
+			if not sound.IsLoaded then
+				cleanup()
+			end
+		end)
 	end
 	return sound
 end
